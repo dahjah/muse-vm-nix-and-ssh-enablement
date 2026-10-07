@@ -88,8 +88,6 @@ edit that breaks either half refuses to save.
   nodes) and persists in `~/.local/state/tailscale/`. To revoke the
   VM's access permanently, delete the node in the Tailscale admin
   console or delete that state folder.
-- Nothing in this repo contains credentials. The Tailscale login is
-  approved interactively in your browser; no auth keys are used.
 
 ## Requirements
 

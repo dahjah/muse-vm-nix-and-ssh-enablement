@@ -9,7 +9,7 @@ this VM by following a prepared guide exactly. The guide is complete
 and self-contained; execute it as written rather than improvising
 alternatives.
 
-1. Clone git@github.com:dahjah/muse-vm-nix-and-ssh-enablement.git into ~/muse-vm-tailscale-ssh-enablement
+1. Clone https://github.com/dahjah/muse-vm-nix-and-ssh-enablement.git into ~/muse-vm-tailscale-ssh-enablement
    (if it is already cloned, use the existing copy).
 2. Read INSTALL.md in that repo, in full, before running anything.
 3. Execute its phases in order. The repo's files/ tree holds the exact
