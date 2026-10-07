@@ -1,4 +1,4 @@
-# Muse VM setup guide — Nix + Tailscale SSH
+# Muse VM setup guide: Nix + Tailscale SSH
 
 ## 0. For the Muse instance receiving this document
 
@@ -8,19 +8,19 @@ step is safe. Sections §1–§10 explain *why*; the `files/` tree holds the
 exact scripts. If `/home/hatch` already contains the files (same VM, state loss
 only), skip to the §9 checklist instead.
 
-**Steps only the user can do — ask for them, never work around them:**
+**Steps only the user can do: ask for them, never work around them:**
 1. Settings > Permissions > Direct network protocols: every row to **Ask**.
    Leave the Advanced **SNI mismatch rejection** setting at its default;
    this setup does not need it changed (see §2).
 2. Approve the Tailscale login URL in their browser when you present it,
    and make sure `tag:muse` exists in their tailnet policy (they are a
-   tagOwner) with the §7 policy saved — if their account already has
+   tagOwner) with the §7 policy saved, if their account already has
    this policy, it persists server-side; don't duplicate it.
 3. Approve the burst of per-IP "wants to connect" prompts that follows a
    Tailscale start (the DERP sweep, §7). There is no auto-approve; warn
    them it's coming, once, instead of apologizing per prompt.
 
-**Phase B — lay down the files (skip any that already exist):**
+**Phase B: lay down the files (skip any that already exist):**
 Copy from this repo's `files/` tree to the target paths, and `chmod +x`
 each script:
 
@@ -39,7 +39,7 @@ each script:
   /home/hatch/bin/$t; done`
 - Flag: `touch ~/.config/vm-tailscale/autostart`
 
-**Phase C — Nix:** run `sh ~/workspace/nix/setup-nix.sh` (repo:
+**Phase C: Nix:** run `sh ~/workspace/nix/setup-nix.sh` (repo:
 `files/nix/setup-nix.sh`), then
 `/home/hatch/bin/nix-env -iA nixpkgs.tailscale`. Done when
 `nix --version` prints 2.35.2 and a real store operation (e.g.
@@ -47,11 +47,11 @@ each script:
 `user.hatch_tainted.<new-suffix>` attribute, append that suffix to
 `ignored-acls` in §4's config (all three places it lives) and retry.
 
-**Phase D — boot hook:** register `nix-boot-trigger` exactly as in §6,
+**Phase D: boot hook:** register `nix-boot-trigger` exactly as in §6,
 dry-run both marker branches, enable it. Done when the hook log shows one
 bootstrap poll followed by ~20 ms silent polls.
 
-**Phase E — Tailscale:** start the daemon and run `up` exactly as in §7,
+**Phase E: Tailscale:** start the daemon and run `up` exactly as in §7,
 present the login URL to the user (step 2 above), and afterwards verify
 `tailscale status --json` shows `BackendState: Running`, `Online: true`,
 `Health: []`. Done means the user can `ssh root@muse-vm` from their own
@@ -63,30 +63,30 @@ recurring job is not to be surprised by it.
 
 - Dedicated Muse Secure VM: 2 CPUs, 7.7 GiB RAM, Ubuntu 24.04.5 LTS, hostname `htch-runtime`, systemd-nspawn cell (PID 1 = systemd 255).
 - Commands run as **root (uid 0)**, but the session `HOME` is `/home/hatch`.
-- Filesystems — this split drives every design decision:
+- Filesystems: this split drives every design decision:
   - `/home/hatch` = 100 GB btrfs volume (`/dev/mapper/rv`). **Persists across reboots and VM replacement.** Everything durable must live here.
   - `/` = overlay, 7.5 GB, upper layer in `/run/hatch/overlay/upper` (tmpfs). **Everything outside home is wiped on every cell restart**: `/etc`, `/root`, `/nix` mount point, `/tmp`, `/run`.
 - Initially nothing listening; no sshd (client only).
 
 ## 2. Settings only the user can change (Muse app / web Settings)
 
-- **Settings > Permissions > Direct network protocols**: rows (SSH, email send, mailbox, databases, FTP, external DNS, other TCP, other UDP), each **Deny or Ask only — no Allow**. Deny quietly refuses; Ask prompts per destination. Set all rows to Ask. External DNS on Ask is a standing permission, not per-lookup prompts.
-- Advanced: **SNI mismatch rejection** — leave it at its default; this setup does not need it changed. (Changing it made no measurable difference in testing; see §3.)
-- Approvals are per single IP:port ("Always allow" covers only that destination). There is **no auto-approve**. Only the user can approve; the agent cannot. Prompt cards attribute the request to "your assistant" — the VM has no network identity separate from the agent runtime, so daemon traffic (e.g. tailscaled's) is presented as the agent's. Setting the *Other UDP* row to **Deny** quietly refuses the UDP class (which cannot succeed through this gateway anyway) and shrinks prompt volume; the TCP set (control plane + DERP map) is finite and saturates via per-IP approvals.
+- **Settings > Permissions > Direct network protocols**: rows (SSH, email send, mailbox, databases, FTP, external DNS, other TCP, other UDP), each **Deny or Ask only, no Allow**. Deny quietly refuses; Ask prompts per destination. Set all rows to Ask. External DNS on Ask is a standing permission, not per-lookup prompts.
+- Advanced: **SNI mismatch rejection**: leave it at its default; this setup does not need it changed. (Changing it made no measurable difference in testing; see §3.)
+- Approvals are per single IP:port ("Always allow" covers only that destination). There is **no auto-approve**. Only the user can approve; the agent cannot. Prompt cards attribute the request to "your assistant", the VM has no network identity separate from the agent runtime, so daemon traffic (e.g. tailscaled's) is presented as the agent's. Setting the *Other UDP* row to **Deny** quietly refuses the UDP class (which cannot succeed through this gateway anyway) and shrinks prompt volume; the TCP set (control plane + DERP map) is finite and saturates via per-IP approvals.
 
 ## 3. Network/gateway behavior
 
 - All egress funnels through a gateway (fake-IP DNS: public names resolve to 198.18.x.x; gateway at 198.19.0.1:3128, also IPv6 `fd8b:4f84:7d32:99::1`, host `hatch-egress-proxy`). An explicit HTTP proxy is in the agent shell's environment.
 - **Direct TLS works only when SNI == the DNS-mapped destination hostname.** Mismatched SNI is killed (EOF). No-SNI and matching-SNI handshakes succeed.
 - **UDP is effectively dead** (tailscaled netcheck: "UDP is blocked"). TCP via the explicit proxy CONNECT works broadly.
-- Consequence: anything that must receive connections does so over a **persistent outbound TCP/TLS connection** (DERP) — never via inbound ports (there are none) and never via UDP.
+- Consequence: anything that must receive connections does so over a **persistent outbound TCP/TLS connection** (DERP), never via inbound ports (there are none) and never via UDP.
 
 ## 4. Nix (the centerpiece)
 
 ### The problem
 Files on the regular filesystems acquire immutable extended attributes in the
 `user.hatch_tainted*` family (variants observed: bare `user.hatch_tainted`,
-`.n`, `.u` — **the suffix set differs between boots**, so the config lists all
+`.n`, `.u`, **the suffix set differs between boots**, so the config lists all
 observed variants; if a future install fails naming a new variant, append it
 in all three places listed below). Stock Nix aborts registering store paths:
 `removing extended attribute 'user.hatch_tainted...' ... Operation not permitted`.
@@ -121,7 +121,7 @@ point to `nixwrap`, which on every invocation:
 5. recreates `/root/.nix-profile` symlink and `/root/.nix-channels` if absent,
 6. execs the real tool from `/root/.nix-profile/bin`.
 
-Full-reinstall script (fresh VM): **`~/workspace/nix/setup-nix.sh`** — it
+Full-reinstall script (fresh VM): **`~/workspace/nix/setup-nix.sh`**: it
 installs Nix itself but does NOT create the symlink farm, install packages,
 or lay down any scripts; on a fresh instance follow §0 Phase B/C for those.
 Installed via nix so far: hello, attr 2.6.0, cowsay, tailscale 1.102.5.
@@ -132,7 +132,7 @@ Installed via nix so far: hello, attr 2.6.0, cowsay, tailscale 1.102.5.
   does **not** pull in `multi-user.target`; `WantedBy=multi-user.target`
   services never start.
 - Unit files in home + symlinks in `/etc` *are* discovered and run within a
-  boot, but the symlinks sit on the ephemeral overlay — gone next boot.
+  boot, but the symlinks sit on the ephemeral overlay, gone next boot.
 - No user manager in agent sessions; `.bashrc`/`.profile` never fire (shells are `--norc --noprofile`).
 - Conclusion: no userspace mechanism gets code running at boot from inside the
   guest. The runtime's saved jobs (crons/hooks) are the only restored layer.
@@ -142,7 +142,7 @@ Installed via nix so far: hello, attr 2.6.0, cowsay, tailscale 1.102.5.
 - Hook id **`nix-boot-trigger`**: a runtime-saved automation whose **Bash
   script** (`~/hooks/scripts/nix-boot-trigger.sh`, repo:
   `files/hooks/nix-boot-trigger.sh`) is polled by the runtime every
-  **5 s** as plain shell — **no model
+  **5 s** as plain shell, **no model
   tokens**. Polls consume nothing but a few ms of CPU.
 - Boot detection uses a marker trick: the script checks
   `/tmp/.nix-bootstrapped`. `/tmp` is tmpfs, so the marker is gone after
@@ -155,8 +155,8 @@ Installed via nix so far: hello, attr 2.6.0, cowsay, tailscale 1.102.5.
   agent**; the marker stays absent so the next poll retries. The hook's
   worker-prompt field (platform-required, non-empty) is literally `None.`
   and the script contains no `wake` call at all.
-- An earlier design — a cron waking an agent every minute to run the same
-  command — worked but paid the full agent context per run (~1,440/day);
+- An earlier design, a cron waking an agent every minute to run the same
+  command, worked but paid the full agent context per run (~1,440/day);
   it was removed the same day.
 - After a reboot the hook resumes polling by itself. Its retries are
   what surface incomplete self-healing; the failure modes to expect are
@@ -183,8 +183,8 @@ runtime-saved record (mirror at `~/hooks/definitions/nix-boot-trigger.json`):
 Recreate by: writing the script (repo: `files/hooks/nix-boot-trigger.sh`)
 to that path and making it
 executable, registering a hook with the parameters above (it starts
-disabled), dry-running it twice — marker present → `silent`; marker absent
-→ `silent` with a "would bootstrap" log line (dry runs change nothing) —
+disabled), dry-running it twice, marker present → `silent`; marker absent
+→ `silent` with a "would bootstrap" log line (dry runs change nothing),
 then enabling it and confirming in `~/hooks/logs/nix-boot-trigger.jsonl`
 that a live poll bootstraps and subsequent polls are ~20 ms silents.
 House rules learned here: the script must `source "$HATCH_HOOK_RUNTIME"`,
@@ -210,23 +210,23 @@ guard state writes behind the `HATCH_HOOK_DRY_RUN` check.
   /home/hatch/bin/tailscale up --ssh --hostname=muse-vm --advertise-tags=tag:muse
   ```
 - Networking facts: through the env proxy, control registration fails
-  (HTTP 400 via :3128; reset via the :3130 tailnet proxy). **Direct works** —
+  (HTTP 400 via :3128; reset via the :3130 tailnet proxy). **Direct works**,
   hence the proxy env must be removed for the daemon. Direct UDP is dead, so
   peers are reached via DERP relays over TCP 443 (home relay: Dallas).
 - Node: **muse-vm**, 100.92.51.122, muse-vm.coho-jazz.ts.net, tag:muse.
 - **Login persistence:** the node key and control-plane registration live
   in `tailscaled.state` inside the statedir above (home = persistent), and
-  tag-owned nodes have key expiry off by default — so reboots and daemon
+  tag-owned nodes have key expiry off by default, so reboots and daemon
   restarts reconnect with **no new login**. A fresh login is needed only
   if the statedir is deleted or the node is removed in the admin console.
 - `/dev/net/tun` exists and `cap_net_admin` is in the bounding set, so
-  kernel-TUN mode might work; it was never needed — userspace mode plus
+  kernel-TUN mode might work; it was never needed, userspace mode plus
   DERP covers everything here.
 - **Autostart (opt-in):** nixwrap runs
   `/home/hatch/scripts/bootstrap-tailscale.sh` (repo:
   `files/scripts/bootstrap-tailscale.sh`) on every nix
   invocation when the flag `/home/hatch/.config/vm-tailscale/autostart`
-  exists — so the boot hook's post-reboot nix call brings tailscaled up
+  exists, so the boot hook's post-reboot nix call brings tailscaled up
   and reconnects it automatically. The script is
   idempotent, strips the proxy env itself, uses the statedir above, and
   only logs (never blocks) on trouble; a `NeedsLogin` state still needs a
@@ -237,18 +237,18 @@ guard state writes behind the `HATCH_HOOK_DRY_RUN` check.
   connect" prompts under Ask (a finite set, roughly the DERP map, v4+v6).
   No auto-approve exists. Setting the *Other UDP* protocol row to Deny
   silences the UDP class, which can never succeed here anyway.
-- Policy goals — the whole pattern is one idea: **tag:muse is a source
+- Policy goals: the whole pattern is one idea: **tag:muse is a source
   in no rule**, so the VM can initiate nothing, while the owner's devices
   can reach it (and everything else) freely. An `ssh` rule covers
   Tailscale SSH into the tagged node (ACLs alone don't govern it), and
-  the policy's `tests` section locks both halves in — Tailscale refuses
+  the policy's `tests` section locks both halves in, Tailscale refuses
   to save the policy if a future edit breaks them. Minimal policy for
   the pattern. The complete policy is `files/tailscale/policy.jsonc`
   in this repo; its contents go in the Tailscale admin console's
   policy editor, replacing what is there:
 
 
-## 8. Expected end state (example values — yours will differ)
+## 8. Expected end state (example values; yours will differ)
 
 A finished setup looks like this (example node name and address shown;
 expect the same *shape*, not the same values):
@@ -267,7 +267,7 @@ is mostly re-running and verifying, in this order:
 
 1. Settings > Permissions > Direct network protocols: set rows to **Ask**
    (user only; the agent cannot).
-2. Run any wrapper once — `/home/hatch/bin/nix --version` — and let nixwrap
+2. Run any wrapper once, `/home/hatch/bin/nix --version`, and let nixwrap
    self-heal (mount point, nix.conf, profile link). If the store itself is
    gone, run `~/workspace/nix/setup-nix.sh` first.
 3. `nix-env -iA nixpkgs.tailscale` if the profile lacks it.

@@ -3,8 +3,8 @@
 Give your Muse VM two things it doesn't ship with:
 
 1. **The Nix package manager**, installed so it survives VM reboots and
-   replacements — install any of the 100k+ nixpkgs packages on your VM.
-2. **Real Tailscale with SSH** — the full upstream Tailscale, so you can
+   replacements, install any of the 100k+ nixpkgs packages on your VM.
+2. **Real Tailscale with SSH**: the full upstream Tailscale, so you can
    `ssh` into your Muse VM from your own devices over your tailnet.
    The VM is reachable, but it cannot initiate connections out to your
    other devices.
@@ -21,7 +21,7 @@ You don't install this by hand. Your Muse does it:
 ## Your three jobs
 
 1. **Flip one setting.** In the Muse app or web UI:
-   Settings > Permissions > Direct network protocols — set the rows to
+   Settings > Permissions > Direct network protocols, set the rows to
    **Ask**. (There is no "allow" option; Ask is what lets Tailscale's
    connections be approved.)
 2. **Set up the Tailscale side.** When Muse asks: paste the ACL policy
@@ -49,7 +49,7 @@ otherwise refuses to handle.
 here, so a runtime hook polls every 5 seconds. It checks for a marker
 file that only exists after a successful boot setup; the first poll
 that finds it missing runs one Nix command, which triggers all the
-self-healing. Steady-state cost is one file test — no agent, no
+self-healing. Steady-state cost is one file test, no agent, no
 tokens, no wake-ups.
 
 **Tailscale.** The platform's built-in Tailscale is a minimal client

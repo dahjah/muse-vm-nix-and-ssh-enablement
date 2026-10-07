@@ -1,6 +1,6 @@
 {
 	// tag:muse handling only. Tailscale blocks anything not explicitly
-	// allowed below, and tag:muse is not a source in ANY rule — that
+	// allowed below, and tag:muse is not a source in ANY rule, that
 	// absence is the entire "no outbound" mechanism.
 
 	"tagOwners": {

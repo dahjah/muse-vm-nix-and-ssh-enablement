@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Idempotent starter for the full (nix-installed) tailscaled on a Muse VM.
 # Called by nixwrap on nix invocations when the opt-in flag
-# /home/hatch/.config/vm-tailscale/autostart exists — the boot hook fires a
+# /home/hatch/.config/vm-tailscale/autostart exists, the boot hook fires a
 # nix command after every reboot, so this gives tailscaled boot autostart.
 # Healthy path is a fast no-op; failures never propagate to the caller.
 set -uo pipefail
@@ -29,7 +29,7 @@ fi
 backend() { "$TS" status --json 2>/dev/null | jq -r '.BackendState // "NoState"' 2>/dev/null || echo NoState; }
 
 if ! pgrep -f 'nix-profile/bin/tailscale[d]' >/dev/null; then
-  # Critical: the daemon must NOT inherit the proxy env — registration
+  # Critical: the daemon must NOT inherit the proxy env, registration
   # through the proxy fails (400 / reset); direct works.
   env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy \
     setsid "$TSD" --tun=userspace-networking --statedir="$STATE" >>"$STATE/tailscaled.log" 2>&1 &
