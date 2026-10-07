@@ -3,8 +3,9 @@
 Give your Muse VM two things it doesn't ship with:
 
 1. **The Nix package manager**, installed so that it survives VM
-   reboots and replacements. Any package in nixpkgs (100k+) can then
-   be installed on the VM.
+   reboots and replacements, allowing full access to nixpkgs
+   instead of the limited apt packages available within the muse
+   VM.
 2. **Full Tailscale with SSH support**: the upstream `tailscaled`,
    allowing SSH access to the VM from other devices on the same
    tailnet. An optional ACL policy (recommended) can additionally
