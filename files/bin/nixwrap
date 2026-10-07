@@ -13,12 +13,6 @@ if ! mountpoint -q /nix 2>/dev/null; then
     mount --bind /var/tmp/nixroot /nix
   fi
 fi
-# Companion service bootstrap (opt-in): on nix invocations, keep the
-# full tailscaled running and connected. Cheap no-op when already
-# healthy; failures never block the nix command itself.
-if [ -f /home/hatch/.config/vm-tailscale/autostart ]; then
-  /home/hatch/scripts/bootstrap-tailscale.sh >/dev/null 2>&1 || true
-fi
 # /etc/nix/nix.conf also lives on the ephemeral overlay; recreate if absent.
 # Without it, installs fail: the store's files carry the immutable
 # 'hatch_tainted' xattrs and stock Nix cannot strip them (ignored-acls),
@@ -39,6 +33,12 @@ if [ ! -e /root/.nix-profile ] && [ -e /nix/var/nix/profiles/default ]; then
 fi
 if [ ! -e /root/.nix-channels ] && [ -e /nix/var/nix/profiles/per-user/root/channels ]; then
   printf '%s\n' 'https://channels.nixos.org/nixpkgs-unstable nixpkgs' > /root/.nix-channels 2>/dev/null
+fi
+# Companion service bootstrap (opt-in): on nix invocations, keep the
+# full tailscaled running and connected. Cheap no-op when already
+# healthy; failures never block the nix command itself.
+if [ -f /home/hatch/.config/vm-tailscale/autostart ]; then
+  /home/hatch/scripts/bootstrap-tailscale.sh >/dev/null 2>&1 || true
 fi
 export PATH="/root/.nix-profile/bin:$PATH"
 tool=$(basename "$0")

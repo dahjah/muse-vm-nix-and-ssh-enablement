@@ -121,9 +121,15 @@ Symlinks in `/home/hatch/bin/` (`nix`, `nix-env`, `nix-shell`, `nix-build`,
 point to `nixwrap`, which on every invocation:
 1. `mkdir -p /nix` if absent (fresh overlay has no `/nix`),
 2. bind-mounts `/home/hatch/nixdisk` over `/nix` if not mounted,
-3. runs the tailscale bootstrap (§7) if its opt-in flag exists,
-4. recreates `/etc/nix/nix.conf` if absent (content above),
-5. recreates `/root/.nix-profile` symlink and `/root/.nix-channels` if absent,
+3. recreates `/etc/nix/nix.conf` if absent (content above),
+4. recreates `/root/.nix-profile` symlink and `/root/.nix-channels` if absent,
+5. runs the tailscale bootstrap (§7) if its opt-in flag exists.
+
+The order of steps 3-5 matters: the bootstrap starts a binary that
+lives in the profile, so the profile must be recreated first. If
+the bootstrap runs before step 4 on a fresh boot, it finds no
+binary and gives up, and nothing retries it until the next manual
+nix invocation.
 6. execs the real tool from `/root/.nix-profile/bin`.
 
 Full-reinstall script (fresh VM): **`~/workspace/nix/setup-nix.sh`**: it
