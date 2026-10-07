@@ -75,9 +75,9 @@ recurring job is not to be surprised by it.
 
 ## 2. Settings only the user can change (Muse app / web Settings)
 
-- **Settings > Permissions > Direct network protocols**: each protocol (SSH, email send, mailbox, databases, FTP, external DNS, other TCP, other UDP) is enabled with a checkbox. Enable them; the known-working configuration has all of them enabled.
+- **Settings > Permissions > Direct network protocols**: each protocol is a toggle (Outbound SSH; Outgoing email (SMTP); Email mailbox access (IMAP, POP3); Database connections; File transfer (FTP); External DNS lookups; Other TCP connections; Other UDP traffic). Off blocks the protocol; on lets the assistant ask for approval per connection. Required for this setup: **Other TCP connections** (the Tailscale control plane and its DERP relays are direct TCP connections) and **External DNS lookups** (tailscaled resolves the control and relay hostnames itself). Not needed: the SMTP, IMAP/POP3, database, and FTP toggles. Other UDP traffic cannot succeed through this gateway at all, so it can stay off. Outbound SSH is needed only if the agent itself makes SSH connections (for example, git over SSH).
 - Advanced: **SNI mismatch rejection** must be turned **off**; this setup does not work with it on.
-- Approvals are per single IP:port ("Always allow" covers only that destination). There is **no auto-approve**. Only the user can approve; the agent cannot. Prompt cards attribute the request to "your assistant", the VM has no network identity separate from the agent runtime, so daemon traffic (e.g. tailscaled's) is presented as the agent's. Leaving *Other UDP* disabled refuses the UDP class (which cannot succeed through this gateway anyway) and shrinks prompt volume; the TCP set (control plane + DERP map) is finite and saturates via per-IP approvals.
+- Approvals are per single IP:port ("Always allow" covers only that destination). There is **no auto-approve**. Only the user can approve; the agent cannot. Prompt cards attribute the request to "your assistant", the VM has no network identity separate from the agent runtime, so daemon traffic (e.g. tailscaled's) is presented as the agent's. Leaving *Other UDP traffic* off refuses the UDP class (which cannot succeed through this gateway anyway) and shrinks prompt volume; the TCP set (control plane + DERP map) is finite and saturates via per-IP approvals.
 
 ## 3. Network/gateway behavior
 
@@ -243,7 +243,7 @@ guard state writes behind the `HATCH_HOOK_DRY_RUN` check.
   the user approves them.
 - Approvals: the daemon's DERP sweeps and probes generate per-IP "wants to
   connect" prompts (a finite set, roughly the DERP map, v4+v6).
-  No auto-approve exists. Leaving the *Other UDP* protocol disabled
+  No auto-approve exists. Leaving the *Other UDP traffic* toggle off
   silences the UDP class, which can never succeed here anyway.
 - **Optional security feature (recommended): the receive-only ACL
   policy.** Without it the VM is a normal tailnet node with full
@@ -279,7 +279,7 @@ Home (`/home/hatch`) and all scripts survive VM replacement, so a rebuild
 is mostly re-running and verifying, in this order:
 
 1. Settings > Permissions > Direct network protocols: enable the
-   protocols (checkboxes; user only, the agent cannot).
+   required protocols (§2; user only, the agent cannot).
 2. Run any wrapper once, `/home/hatch/bin/nix --version`, and let nixwrap
    self-heal (mount point, nix.conf, profile link). If the store itself is
    gone, run `~/workspace/nix/setup-nix.sh` first.
