@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "nix-boot-trigger",
+  "enabled": true,
+  "script_path": "~/hooks/scripts/nix-boot-trigger.sh",
+  "prompt": "None.",
+  "poll_interval_secs": 5,
+  "script_timeout_secs": 240,
+  "delivery": {
+    "surface": "main"
+  }
+}

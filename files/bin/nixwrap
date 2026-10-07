@@ -1,0 +1,48 @@
+#!/bin/sh
+# Nix on this VM: files on the regular filesystems get an immutable
+# 'hatch_tainted' xattr that Nix normally cannot strip; /etc/nix/nix.conf
+# lists it in `ignored-acls`, so the store can live on the real disk.
+# Store backing: /home/hatch/nixdisk (100G volume). Each session must
+# bind-mount it over /nix first (mounts don't persist across sessions).
+# A fresh boot has a fresh root overlay: /nix itself may not exist yet.
+[ -d /nix ] || mkdir -p /nix 2>/dev/null
+if ! mountpoint -q /nix 2>/dev/null; then
+  if [ -d /home/hatch/nixdisk/store ]; then
+    mount --bind /home/hatch/nixdisk /nix
+  else
+    mount --bind /var/tmp/nixroot /nix
+  fi
+fi
+# Companion service bootstrap (opt-in): on nix invocations, keep the
+# full tailscaled running and connected. Cheap no-op when already
+# healthy; failures never block the nix command itself.
+if [ -f /home/hatch/.config/vm-tailscale/autostart ]; then
+  /home/hatch/scripts/bootstrap-tailscale.sh >/dev/null 2>&1 || true
+fi
+# /etc/nix/nix.conf also lives on the ephemeral overlay; recreate if absent.
+# Without it, installs fail: the store's files carry the immutable
+# 'hatch_tainted' xattrs and stock Nix cannot strip them (ignored-acls),
+# and the sandboxed root builder cannot write the store (sandbox = false).
+if [ ! -f /etc/nix/nix.conf ]; then
+  mkdir -p /etc/nix 2>/dev/null
+  cat > /etc/nix/nix.conf 2>/dev/null <<'EOF'
+sandbox = false
+build-users-group =
+experimental-features = nix-command flakes
+ignored-acls = security.csm security.selinux system.nfs4_acl security.tamper_marker user.hatch_tainted user.hatch_tainted.n user.hatch_tainted.u
+EOF
+fi
+# The profile symlink lives in /root (ephemeral overlay) while the profile
+# itself lives in the store volume; a reboot wipes the link, so recreate it.
+if [ ! -e /root/.nix-profile ] && [ -e /nix/var/nix/profiles/default ]; then
+  ln -s /nix/var/nix/profiles/default /root/.nix-profile 2>/dev/null
+fi
+if [ ! -e /root/.nix-channels ] && [ -e /nix/var/nix/profiles/per-user/root/channels ]; then
+  printf '%s\n' 'https://channels.nixos.org/nixpkgs-unstable nixpkgs' > /root/.nix-channels 2>/dev/null
+fi
+export PATH="/root/.nix-profile/bin:$PATH"
+tool=$(basename "$0")
+if [ "$tool" = "nixwrap" ] || [ "$tool" = "nixsh" ]; then
+  if [ $# -gt 0 ]; then exec bash -c "$1"; else exec bash; fi
+fi
+exec "/root/.nix-profile/bin/$tool" "$@"

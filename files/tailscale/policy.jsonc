@@ -1,0 +1,62 @@
+{
+	// tag:muse handling only. Tailscale blocks anything not explicitly
+	// allowed below, and tag:muse is not a source in ANY rule — that
+	// absence is the entire "no outbound" mechanism.
+
+	"tagOwners": {
+		// Any user in the tailnet can apply tag:muse.
+		"tag:muse": ["autogroup:member"],
+	},
+
+	"acls": [
+		// The owner's devices get allow-all to any device on any port,
+		// including tag:muse. That is the "allow inbound" half.
+		// OTHER TAGS: if you have other tagged devices (servers, etc.)
+		// that should keep normal access, add their tags to this rule's
+		// "src" list. A tag that appears as a source in NO rule can
+		// initiate nothing. That is exactly what we want for tag:muse, but it
+		// will silently lock out any other tag you forget to list here.
+		// NEVER add tag:muse as a source here.
+		{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["*:*"],
+		},
+	],
+
+	"ssh": [
+		// Tailscale SSH into the Muse VM. Tagged devices have no owner,
+		// so the default autogroup:self rule below cannot cover them.
+		{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["tag:muse"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+		// The default SSH policy for the owner's own devices (template).
+		{
+			"action": "check",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+	],
+
+	// Tailscale won't save the policy if any of these checks fail.
+	// In the first test, replace the example login with your own.
+	"tests": [
+		// The owner can reach the Muse VM.
+		{
+			"src":    "your-own-login@example.com",
+			"accept": ["tag:muse:22"],
+		},
+		// tag:muse can reach nothing.
+		{
+			"src": "tag:muse",
+			"deny": [
+				"tag:muse:22",
+				"100.100.100.100:22",
+			],
+		},
+	],
+}
