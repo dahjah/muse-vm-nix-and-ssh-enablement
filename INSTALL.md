@@ -256,7 +256,9 @@ guard state writes behind the `HATCH_HOOK_DRY_RUN` check.
   policy if a future edit breaks them. The complete policy is
   `files/tailscale/policy.jsonc`
   in this repo; its contents go in the Tailscale admin console's
-  policy editor, replacing what is there:
+  policy editor, replacing what is there. (The user's
+  step-by-step for applying it is in the README's Security
+  section.)
 
 
 ## 8. Expected end state (example values; yours will differ)

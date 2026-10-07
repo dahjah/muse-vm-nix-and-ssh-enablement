@@ -25,10 +25,9 @@ Installation is performed by a Muse agent, not manually:
      permits Tailscale's connections to be approved.)
    - **Tailscale login approval.** Open the login link provided by
      Muse and approve the VM in a browser. Muse will also offer
-     the optional ACL policy from `files/tailscale/policy.jsonc` for
-     pasting into the Tailscale admin console (see "Optional
-     hardening" below). Applying it additionally requires adding the
-     account owner as a `tag:muse` tag owner.
+     the optional ACL policy described under Security below;
+     applying it is a short procedure in the Tailscale admin
+     console, separate from the login approval.
    - **Connection prompt approvals.** On first start, Tailscale
      contacts its relay servers worldwide to select the fastest one.
      Each new address generates an approval prompt. The set is
@@ -98,13 +97,39 @@ configuration; the policy only controls what the VM can initiate.
 
 ## Security
 
-- With the ACL policy applied, it is the control that separates
-  tailnet membership from SSH access, and it limits SSH to the
-  account owner's devices. Without it, the account's existing
-  tailnet policy applies unchanged.
-- The Tailscale node key persists in `~/.local/state/tailscale/`.
-  To revoke the VM's access permanently, delete the node in the
-  Tailscale admin console or delete that state directory.
+By default, the VM joins the tailnet under the account owner's
+identity, and the account's existing policy applies unchanged. The
+Tailscale node key persists in `~/.local/state/tailscale/`; to
+revoke the VM's access permanently, delete the node in the
+Tailscale admin console or delete that state directory.
+
+### Optional: apply the receive-only ACL policy
+
+The policy referenced here is the one described under "Optional
+hardening" above. It is applied by the user, in the Tailscale admin
+console:
+
+1. Open the admin console and go to **Access Controls**, the policy
+   editor.
+2. Replace the policy with the contents of
+   [files/tailscale/policy.jsonc](files/tailscale/policy.jsonc).
+   The policy defines `tag:muse`, grants every tailnet member the
+   right to apply it (`tagOwners`), gives the owner's devices
+   allow-all access, and adds an SSH rule for the tagged VM.
+3. In the `tests` section, replace `your-own-login@example.com`
+   with your own Tailscale login.
+4. If the tailnet has other tagged devices that must keep normal
+   access, add their tags to the `src` list of the allow-all rule,
+   as the comments in the file describe. A tag that appears as a
+   source in no rule can initiate nothing, which is the intent for
+   `tag:muse` but will silently lock out any other tag that is
+   forgotten. Do not add `tag:muse` as a source.
+5. Save. Tailscale evaluates the policy's `tests` on save and
+   refuses to save if any check fails.
+6. Tell Muse the policy is saved, ideally before approving the
+   VM's login link. Muse then joins the VM with
+   `--advertise-tags=tag:muse` so the policy applies to it from the
+   start.
 
 ## Requirements
 
