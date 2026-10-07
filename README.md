@@ -130,6 +130,6 @@ admin console:
 
 ## Requirements
 
-- A Muse VM (the environment described in `INSTALL.md` §1)
+- A Muse VM (the environment described under "The machine" in [INSTALL.md](INSTALL.md))
 - A Tailscale account (the free tier is sufficient)
 - A few minutes for the manual steps listed under Quick start
