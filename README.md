@@ -20,10 +20,11 @@ Installation is performed by a Muse agent, not manually:
    and send it to Muse in chat.
 2. Muse clones this repository and follows [INSTALL.md](INSTALL.md).
 3. The process pauses at three points for user action:
-   - **Permissions setting.** In the Muse app or web UI, under
-     Settings > Permissions > Direct network protocols, set all rows
-     to **Ask**. (No "Allow" option exists; Ask is the setting that
-     permits Tailscale's connections to be approved.)
+   - **Permissions settings.** In the Muse app or web UI, under
+     Settings > Permissions, enable the necessary Direct network
+     protocols by setting the rows to **Ask**, and under
+     **Advanced** turn off **SNI mismatch rejection**. Both changes
+     are required.
    - **Tailscale login approval.** Open the login link provided by
      Muse and approve the VM in a browser. Muse will also offer
      the optional ACL policy described under Security below;
