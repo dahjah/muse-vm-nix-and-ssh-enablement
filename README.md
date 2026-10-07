@@ -1,101 +1,114 @@
 # Muse VM: Nix + Tailscale SSH enablement
 
-Give your Muse VM two things it doesn't ship with:
+This repository enables two capabilities on a Muse VM:
 
-1. **The Nix package manager**, installed so it survives VM reboots and
-   replacements, install any of the 100k+ nixpkgs packages on your VM.
-2. **Real Tailscale with SSH**: the full upstream Tailscale, so you can
-   `ssh` into your Muse VM from your own devices over your tailnet.
-   An optional ACL policy (recommended) can also make the VM
-   receive-only, so it cannot initiate connections out to your other
-   devices.
+1. **The Nix package manager**, installed so that it survives VM
+   reboots and replacements. Any package in nixpkgs (100k+) can then
+   be installed on the VM.
+2. **Full Tailscale with SSH support**: the upstream `tailscaled`,
+   allowing SSH access to the VM from other devices on the same
+   tailnet. An optional ACL policy (recommended) can additionally
+   restrict the VM to receive-only operation, preventing it from
+   initiating connections to other tailnet devices.
 
 ## Quick start
 
-You don't install this by hand. Your Muse does it:
+Installation is performed by a Muse agent, not manually:
 
-1. Copy the prompt block from [SYSTEM_PROMPT.md](SYSTEM_PROMPT.md) and
-   send it to your Muse in chat.
-2. Muse clones this repo and works through [INSTALL.md](INSTALL.md).
-3. At three points Muse will stop and need you:
-   - **Flip one setting.** In the Muse app or web UI:
-     Settings > Permissions > Direct network protocols, set the rows
-     to **Ask**. (There is no "allow" option; Ask is what lets
-     Tailscale's connections be approved.)
-   - **Approve the Tailscale login.** Click the login link Muse
-     gives you and approve the VM in your browser. Muse will also
-     offer you the optional ACL policy from
-     `files/tailscale/policy.jsonc` to paste into your Tailscale
-     admin console (see "Optional hardening" below); applying it
-     also means adding yourself as owner of `tag:muse`.
-   - **Approve a burst of connection prompts.** The first time
-     Tailscale starts, it contacts its relay servers around the world
-     to pick the fastest one. Each new address produces an approval
-     prompt. It's a finite set; approve them and they stop.
+1. Copy the prompt block from [SYSTEM_PROMPT.md](SYSTEM_PROMPT.md)
+   and send it to Muse in chat.
+2. Muse clones this repository and follows [INSTALL.md](INSTALL.md).
+3. The process pauses at three points for user action:
+   - **Permissions setting.** In the Muse app or web UI, under
+     Settings > Permissions > Direct network protocols, set all rows
+     to **Ask**. (No "Allow" option exists; Ask is the setting that
+     permits Tailscale's connections to be approved.)
+   - **Tailscale login approval.** Open the login link provided by
+     Muse and approve the VM in a browser. Muse will also offer
+     the optional ACL policy from `files/tailscale/policy.jsonc` for
+     pasting into the Tailscale admin console (see "Optional
+     hardening" below). Applying it additionally requires adding the
+     account owner as a `tag:muse` tag owner.
+   - **Connection prompt approvals.** On first start, Tailscale
+     contacts its relay servers worldwide to select the fastest one.
+     Each new address generates an approval prompt. The set is
+     finite; once approved, the prompts stop.
 
-After that, the setup maintains itself: reboots and VM replacements
-self-recover with no further work.
+After installation, the setup is self-maintaining: reboots and VM
+replacements recover automatically.
 
-## How it works, in one paragraph each
+## How it works
 
-**Nix.** A Muse VM keeps only your home folder between reboots;
-everything else is wiped. The Nix store therefore lives on a disk image
-inside home and is bind-mounted into place on demand by a small wrapper
-script. One configuration setting (`ignored-acls`) works around an
-immutable file marker this platform stamps on files, which stock Nix
-otherwise refuses to handle.
+### Nix
 
-**Boot recovery.** There is no usable systemd for custom services
-here, so a runtime hook polls every 5 seconds. It checks for a marker
-file that only exists after a successful boot setup; the first poll
-that finds it missing runs one Nix command, which triggers all the
-self-healing. Steady-state cost is one file test, no agent, no
-tokens, no wake-ups.
+A Muse VM preserves only the home directory between reboots; all
+other filesystems are wiped. The Nix store therefore resides on a
+disk image inside the home directory and is bind-mounted into place
+on demand by a wrapper script. A single configuration setting
+(`ignored-acls`) works around an immutable file marker that this
+platform stamps on files, which stock Nix otherwise refuses to
+process.
 
-**Tailscale.** The platform's built-in Tailscale is a minimal client
-that can't accept connections. This setup installs the full upstream
-`tailscaled` from Nix and runs it in userspace-networking mode (the
-VM's gateway passes no UDP, so relay-over-HTTPS is the data path).
-Its state lives in your home folder, so the node stays registered
-across reboots without re-login.
+### Boot recovery
 
-**Optional hardening: the ACL policy.** The Tailscale policy in
-this repo makes the VM a pure SSH target: `tag:muse` is a source in
-no rule, so the VM can initiate nothing on your tailnet, while your
-own devices can reach it (and everything else) normally. Policy
-tests are included so a future edit that breaks either half refuses
-to save. This is a security feature, not a requirement: skip it and
-the VM is a normal tailnet member with full access under your
-account's existing policy, like any other device you own. SSH into
-the VM works either way; the policy only controls what the VM can
-initiate.
+No usable systemd is available for custom services in this
+environment. Instead, a runtime hook polls every 5 seconds for a
+marker file that exists only after a successful boot setup. The
+first poll that finds the marker missing runs a single Nix command,
+which triggers the wrapper's self-healing steps. In steady state,
+each poll is a single file test: no agent is woken and no tokens are
+consumed.
 
-## Repo layout
+### Tailscale
 
-| File | What it is |
+The platform's built-in Tailscale is a minimal client that cannot
+accept inbound connections. This setup installs the full upstream
+`tailscaled` from Nix and runs it in userspace-networking mode,
+because the VM's gateway passes no UDP and relay-over-HTTPS is the
+available data path. Daemon state is stored in the home directory,
+so the node remains registered across reboots without re-login.
+
+### Optional hardening: the ACL policy
+
+The Tailscale policy in this repository makes the VM a pure SSH
+target: `tag:muse` appears as a source in no rule, so the VM can
+initiate nothing on the tailnet, while the owner's devices retain
+normal access to it and to everything else. The policy includes
+tests, so a later edit that breaks either property causes Tailscale
+to refuse the save.
+
+This policy is a security feature, not a requirement. If it is
+skipped, the VM is a normal tailnet member with full access under
+the account's existing policy. SSH access to the VM works in either
+configuration; the policy only controls what the VM can initiate.
+
+## Repository layout
+
+| File | Description |
 |---|---|
-| `README.md` | This document, for humans |
-| `SYSTEM_PROMPT.md` | The copy/paste prompt to give Muse |
-| `INSTALL.md` | The step-by-step guide Muse follows |
-| `files/bin/nixwrap` | The wrapper behind every `nix`/`tailscale` command |
+| `README.md` | This document |
+| `SYSTEM_PROMPT.md` | Copy/paste prompt for delegating the installation to Muse |
+| `INSTALL.md` | Step-by-step installation guide followed by Muse |
+| `files/bin/nixwrap` | Wrapper invoked by every `nix`/`tailscale` command |
 | `files/nix/setup-nix.sh` | Full Nix install/reinstall script |
-| `files/hooks/nix-boot-trigger.sh` | The boot-recovery poll script |
-| `files/hooks/nix-boot-trigger.json` | The hook's registration parameters |
-| `files/scripts/bootstrap-tailscale.sh` | Idempotent tailscaled starter |
-| `files/tailscale/policy.jsonc` | The Tailscale ACL policy (you paste this) |
+| `files/hooks/nix-boot-trigger.sh` | Boot recovery poll script |
+| `files/hooks/nix-boot-trigger.json` | Hook registration parameters |
+| `files/scripts/bootstrap-tailscale.sh` | Idempotent `tailscaled` starter |
+| `files/tailscale/policy.jsonc` | Tailscale ACL policy for the admin console |
 
-## Security notes
+## Security
 
-- If you apply the ACL policy, it is what stands between "on your
-  tailnet" and "can SSH in", and it limits SSH to your own account's
-  devices. Without it, whatever your tailnet policy allows applies.
-- The VM's Tailscale node key persists in
-  `~/.local/state/tailscale/` (tagged nodes have key expiry off by
-  default). To revoke the VM's access permanently, delete the node
-  in the Tailscale admin console or delete that state folder.
+- With the ACL policy applied, it is the control that separates
+  tailnet membership from SSH access, and it limits SSH to the
+  account owner's devices. Without it, the account's existing
+  tailnet policy applies unchanged.
+- The Tailscale node key persists in `~/.local/state/tailscale/`
+  (tagged nodes have key expiry disabled by default). To revoke the
+  VM's access permanently, delete the node in the Tailscale admin
+  console or delete that state directory.
 
 ## Requirements
 
 - A Muse VM (the environment described in `INSTALL.md` §1)
-- A Tailscale account (free tier is fine)
-- Five minutes of your time, spread across Muse's work
+- A Tailscale account (the free tier is sufficient)
+- A few minutes for the manual steps listed under Quick start
