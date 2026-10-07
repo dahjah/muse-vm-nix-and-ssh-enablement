@@ -18,7 +18,7 @@ only), skip to the §9 checklist instead.
    with the user as tagOwner; if their account already has it saved,
    it persists server-side, don't duplicate it. If the user would
    rather the VM have normal, full tailnet access, skip the policy
-   entirely and use the tagless `up` variant in §7.
+   entirely; the standard `up` command in §7 is all they need.
 3. Approve the burst of per-IP "wants to connect" prompts that follows a
    Tailscale start (the DERP sweep, §7). There is no auto-approve; warn
    them it's coming, once, instead of apologizing per prompt.
@@ -212,21 +212,20 @@ guard state writes behind the `HATCH_HOOK_DRY_RUN` check.
     setsid /home/hatch/bin/tailscaled --tun=userspace-networking \
       --statedir=/home/hatch/.local/state/tailscale \
       >/home/hatch/.local/state/tailscale/tailscaled.log 2>&1 &
-  /home/hatch/bin/tailscale up --ssh --hostname=muse-vm --advertise-tags=tag:muse
+  /home/hatch/bin/tailscale up --ssh --hostname=muse-vm
   ```
-- Skip path (user declined the ACL policy): omit the tag, with
-  `/home/hatch/bin/tailscale up --ssh --hostname=muse-vm`. The node
-  joins under the user's own identity with whatever their existing
-  tailnet policy allows.
+- The node joins under the user's own identity, with whatever their
+  existing tailnet policy allows. No tags and no ACL changes are
+  involved. (With the optional ACL policy below, the node must carry
+  the tag instead: add `--advertise-tags=tag:muse` to the `up`
+  command.)
 - Networking facts: through the env proxy, control registration fails
   (HTTP 400 via :3128; reset via the :3130 tailnet proxy). **Direct works**,
   hence the proxy env must be removed for the daemon. Direct UDP is dead, so
   peers are reached via DERP relays over TCP 443 (home relay: Dallas).
-- Node: **muse-vm**, 100.92.51.122, muse-vm.coho-jazz.ts.net, tag:muse.
 - **Login persistence:** the node key and control-plane registration live
-  in `tailscaled.state` inside the statedir above (home = persistent), and
-  tag-owned nodes have key expiry off by default, so reboots and daemon
-  restarts reconnect with **no new login**. A fresh login is needed only
+  in `tailscaled.state` inside the statedir above (home = persistent), so
+  reboots and daemon restarts reconnect with **no new login**. A fresh login is needed only
   if the statedir is deleted or the node is removed in the admin console.
 - `/dev/net/tun` exists and `cap_net_admin` is in the bounding set, so
   kernel-TUN mode might work; it was never needed, userspace mode plus
@@ -287,12 +286,13 @@ is mostly re-running and verifying, in this order:
    are runtime-saved; recreate from §6 + `files/hooks/` if missing).
 5. tailscaled autostarts via its flag (§7); if the node shows
    NeedsLogin, run the §7 command block and approve the login URL.
-6. The ACL policy lives in the user's Tailscale account (server-side), so it
-   survives; just verify the node shows tag:muse and `tailscale status`
+6. If the ACL policy was applied, it lives in the user's Tailscale
+   account (server-side), so it survives; verify `tailscale status`
    Health is `[]`.
 7. If the node itself was ever deleted from the tailnet, redo
-   `tailscale up --ssh --hostname=muse-vm --advertise-tags=tag:muse`
-   and approve the login URL in a browser.
+   `tailscale up --ssh --hostname=muse-vm` (adding
+   `--advertise-tags=tag:muse` if the ACL policy is in use) and
+   approve the login URL in a browser.
 
 ## 10. Known quirk: taint-marker suffixes
 

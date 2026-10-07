@@ -102,10 +102,9 @@ configuration; the policy only controls what the VM can initiate.
   tailnet membership from SSH access, and it limits SSH to the
   account owner's devices. Without it, the account's existing
   tailnet policy applies unchanged.
-- The Tailscale node key persists in `~/.local/state/tailscale/`
-  (tagged nodes have key expiry disabled by default). To revoke the
-  VM's access permanently, delete the node in the Tailscale admin
-  console or delete that state directory.
+- The Tailscale node key persists in `~/.local/state/tailscale/`.
+  To revoke the VM's access permanently, delete the node in the
+  Tailscale admin console or delete that state directory.
 
 ## Requirements
 
