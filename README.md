@@ -6,8 +6,9 @@ Give your Muse VM two things it doesn't ship with:
    replacements, install any of the 100k+ nixpkgs packages on your VM.
 2. **Real Tailscale with SSH**: the full upstream Tailscale, so you can
    `ssh` into your Muse VM from your own devices over your tailnet.
-   The VM is reachable, but it cannot initiate connections out to your
-   other devices.
+   An optional ACL policy (recommended) can also make the VM
+   receive-only, so it cannot initiate connections out to your other
+   devices.
 
 ## Quick start
 
@@ -16,22 +17,21 @@ You don't install this by hand. Your Muse does it:
 1. Copy the prompt block from [SYSTEM_PROMPT.md](SYSTEM_PROMPT.md) and
    send it to your Muse in chat.
 2. Muse clones this repo and works through [INSTALL.md](INSTALL.md).
-3. You have exactly three small jobs (below). Everything else is Muse's.
-
-## Your three jobs
-
-1. **Flip one setting.** In the Muse app or web UI:
-   Settings > Permissions > Direct network protocols, set the rows to
-   **Ask**. (There is no "allow" option; Ask is what lets Tailscale's
-   connections be approved.)
-2. **Set up the Tailscale side.** When Muse asks: paste the ACL policy
-   from `files/tailscale/policy.jsonc` into your Tailscale admin
-   console, add yourself as owner of `tag:muse`, and approve the VM's
-   login link in your browser.
-3. **Approve a burst of connection prompts.** The first time
-   Tailscale starts, it contacts its relay servers around the world to
-   pick the fastest one. Each new address produces an approval prompt.
-   It's a finite set; approve them and they stop.
+3. At three points Muse will stop and need you:
+   - **Flip one setting.** In the Muse app or web UI:
+     Settings > Permissions > Direct network protocols, set the rows
+     to **Ask**. (There is no "allow" option; Ask is what lets
+     Tailscale's connections be approved.)
+   - **Approve the Tailscale login.** Click the login link Muse
+     gives you and approve the VM in your browser. Muse will also
+     offer you the optional ACL policy from
+     `files/tailscale/policy.jsonc` to paste into your Tailscale
+     admin console (see "Optional hardening" below); applying it
+     also means adding yourself as owner of `tag:muse`.
+   - **Approve a burst of connection prompts.** The first time
+     Tailscale starts, it contacts its relay servers around the world
+     to pick the fastest one. Each new address produces an approval
+     prompt. It's a finite set; approve them and they stop.
 
 After that, the setup maintains itself: reboots and VM replacements
 self-recover with no further work.
@@ -59,11 +59,16 @@ VM's gateway passes no UDP, so relay-over-HTTPS is the data path).
 Its state lives in your home folder, so the node stays registered
 across reboots without re-login.
 
-**The ACL pattern.** The Tailscale policy in this repo makes the VM a
-pure SSH target: `tag:muse` is a source in no rule, so the VM can
-initiate nothing on your tailnet, while your own devices can reach it
-(and everything else) normally. Policy tests are included so a future
-edit that breaks either half refuses to save.
+**Optional hardening: the ACL policy.** The Tailscale policy in
+this repo makes the VM a pure SSH target: `tag:muse` is a source in
+no rule, so the VM can initiate nothing on your tailnet, while your
+own devices can reach it (and everything else) normally. Policy
+tests are included so a future edit that breaks either half refuses
+to save. This is a security feature, not a requirement: skip it and
+the VM is a normal tailnet member with full access under your
+account's existing policy, like any other device you own. SSH into
+the VM works either way; the policy only controls what the VM can
+initiate.
 
 ## Repo layout
 
@@ -81,13 +86,13 @@ edit that breaks either half refuses to save.
 
 ## Security notes
 
-- Treat the VM like a machine other people shouldn't reach: the ACL
-  policy is what stands between "on your tailnet" and "can SSH in",
-  and it limits SSH to your own account's devices.
-- The VM's Tailscale node key does not expire (standard for tagged
-  nodes) and persists in `~/.local/state/tailscale/`. To revoke the
-  VM's access permanently, delete the node in the Tailscale admin
-  console or delete that state folder.
+- If you apply the ACL policy, it is what stands between "on your
+  tailnet" and "can SSH in", and it limits SSH to your own account's
+  devices. Without it, whatever your tailnet policy allows applies.
+- The VM's Tailscale node key persists in
+  `~/.local/state/tailscale/` (tagged nodes have key expiry off by
+  default). To revoke the VM's access permanently, delete the node
+  in the Tailscale admin console or delete that state folder.
 
 ## Requirements
 

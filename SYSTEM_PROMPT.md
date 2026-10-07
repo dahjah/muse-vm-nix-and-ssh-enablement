@@ -16,8 +16,9 @@ alternatives.
    scripts to install; every step is idempotent, so re-running a step
    is safe.
 4. Three steps need me, and only me: changing a Settings permission,
-   saving the Tailscale ACL policy and approving the VM's login in my
-   browser, and approving a burst of connection prompts when
+   approving the VM's Tailscale login in my browser (and, only if I
+   choose it, saving the optional ACL policy that makes the VM
+   receive-only), and approving a burst of connection prompts when
    Tailscale first starts. Stop at those points, tell me exactly what
    to do, and continue when I confirm.
 5. Report success only when every check in the guide's "Expected end

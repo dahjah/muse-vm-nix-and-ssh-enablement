@@ -12,10 +12,13 @@ only), skip to the §9 checklist instead.
 1. Settings > Permissions > Direct network protocols: every row to **Ask**.
    Leave the Advanced **SNI mismatch rejection** setting at its default;
    this setup does not need it changed (see §2).
-2. Approve the Tailscale login URL in their browser when you present it,
-   and make sure `tag:muse` exists in their tailnet policy (they are a
-   tagOwner) with the §7 policy saved, if their account already has
-   this policy, it persists server-side; don't duplicate it.
+2. Approve the Tailscale login URL in their browser when you present it.
+   Optional and recommended: also offer the §7 ACL policy, which makes
+   the VM receive-only. It requires `tag:muse` in their tailnet policy
+   with the user as tagOwner; if their account already has it saved,
+   it persists server-side, don't duplicate it. If the user would
+   rather the VM have normal, full tailnet access, skip the policy
+   entirely and use the tagless `up` variant in §7.
 3. Approve the burst of per-IP "wants to connect" prompts that follows a
    Tailscale start (the DERP sweep, §7). There is no auto-approve; warn
    them it's coming, once, instead of apologizing per prompt.
@@ -52,7 +55,9 @@ dry-run both marker branches, enable it. Done when the hook log shows one
 bootstrap poll followed by ~20 ms silent polls.
 
 **Phase E: Tailscale:** start the daemon and run `up` exactly as in §7,
-present the login URL to the user (step 2 above), and afterwards verify
+present the login URL to the user (step 2 above). The §7 ACL policy
+is optional: offer it, and if the user declines, follow §7's skip path.
+Afterwards verify
 `tailscale status --json` shows `BackendState: Running`, `Online: true`,
 `Health: []`. Done means the user can `ssh root@muse-vm` from their own
 device. From then on, reboots self-recover the whole stack; your only
@@ -209,6 +214,10 @@ guard state writes behind the `HATCH_HOOK_DRY_RUN` check.
       >/home/hatch/.local/state/tailscale/tailscaled.log 2>&1 &
   /home/hatch/bin/tailscale up --ssh --hostname=muse-vm --advertise-tags=tag:muse
   ```
+- Skip path (user declined the ACL policy): omit the tag, with
+  `/home/hatch/bin/tailscale up --ssh --hostname=muse-vm`. The node
+  joins under the user's own identity with whatever their existing
+  tailnet policy allows.
 - Networking facts: through the env proxy, control registration fails
   (HTTP 400 via :3128; reset via the :3130 tailnet proxy). **Direct works**,
   hence the proxy env must be removed for the daemon. Direct UDP is dead, so
@@ -237,13 +246,16 @@ guard state writes behind the `HATCH_HOOK_DRY_RUN` check.
   connect" prompts under Ask (a finite set, roughly the DERP map, v4+v6).
   No auto-approve exists. Setting the *Other UDP* protocol row to Deny
   silences the UDP class, which can never succeed here anyway.
-- Policy goals: the whole pattern is one idea: **tag:muse is a source
-  in no rule**, so the VM can initiate nothing, while the owner's devices
-  can reach it (and everything else) freely. An `ssh` rule covers
-  Tailscale SSH into the tagged node (ACLs alone don't govern it), and
-  the policy's `tests` section locks both halves in, Tailscale refuses
-  to save the policy if a future edit breaks them. Minimal policy for
-  the pattern. The complete policy is `files/tailscale/policy.jsonc`
+- **Optional security feature (recommended): the receive-only ACL
+  policy.** Without it the VM is a normal tailnet node with full
+  access under the account's existing policy. With it, the whole
+  pattern is one idea: **tag:muse is a source in no rule**, so the VM
+  can initiate nothing, while the owner's devices can reach it (and
+  everything else) freely. An `ssh` rule covers Tailscale SSH into
+  the tagged node (ACLs alone don't govern it), and the policy's
+  `tests` section locks both halves in, Tailscale refuses to save the
+  policy if a future edit breaks them. The complete policy is
+  `files/tailscale/policy.jsonc`
   in this repo; its contents go in the Tailscale admin console's
   policy editor, replacing what is there:
 
