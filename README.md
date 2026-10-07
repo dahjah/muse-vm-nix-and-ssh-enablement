@@ -67,20 +67,6 @@ because the VM's gateway passes no UDP and relay-over-HTTPS is the
 available data path. Daemon state is stored in the home directory,
 so the node remains registered across reboots without re-login.
 
-### Optional hardening: the ACL policy
-
-The Tailscale policy in this repository makes the VM a pure SSH
-target: `tag:muse` appears as a source in no rule, so the VM can
-initiate nothing on the tailnet, while the owner's devices retain
-normal access to it and to everything else. The policy includes
-tests, so a later edit that breaks either property causes Tailscale
-to refuse the save.
-
-This policy is a security feature, not a requirement. If it is
-skipped, the VM is a normal tailnet member with full access under
-the account's existing policy. SSH access to the VM works in either
-configuration; the policy only controls what the VM can initiate.
-
 ## Repository layout
 
 | File | Description |
@@ -105,9 +91,20 @@ Tailscale admin console or delete that state directory.
 
 ### Optional: apply the receive-only ACL policy
 
-The policy referenced here is the one described under "Optional
-hardening" above. It is applied by the user, in the Tailscale admin
-console:
+The policy makes the VM a pure SSH target: `tag:muse` appears as
+a source in no rule, so the VM can initiate nothing on the
+tailnet, while the owner's devices retain normal access to it and
+to everything else. The policy includes tests, so a later edit
+that breaks either property causes Tailscale to refuse the save.
+
+This policy is a security feature, not a requirement. If it is
+skipped, the VM is a normal tailnet member with full access under
+the account's existing policy. SSH access to the VM works in
+either configuration; the policy only controls what the VM can
+initiate.
+
+To apply it, the user performs the following in the Tailscale
+admin console:
 
 1. Open the admin console and go to **Access Controls**, the policy
    editor.
