@@ -6,11 +6,12 @@ Give your Muse VM two things it doesn't ship with:
    reboots and replacements, allowing full access to nixpkgs
    instead of the limited apt packages available within the muse
    VM.
-2. **Full Tailscale with SSH support**: the upstream `tailscaled`,
-   allowing SSH access to the VM from other devices on the same
-   tailnet. An optional ACL policy (recommended) can additionally
-   restrict the VM to receive-only operation, preventing it from
-   initiating connections to other tailnet devices.
+2. **Full Tailscale with SSH support**: the built-in Tailscale is
+   a minimal client that cannot accept inbound connections. This
+   installs the full upstream `tailscaled`, allowing SSH access
+   to the VM from other devices on the same tailnet. An optional
+   ACL policy (recommended) can additionally restrict the VM to
+   receive-only operation.
 
 ## Quick start
 
