@@ -57,9 +57,11 @@ No usable systemd is available for custom services in this
 environment. Instead, a runtime hook polls every 5 seconds for a
 marker file that exists only after a successful boot setup. The
 first poll that finds the marker missing runs a single Nix command,
-which triggers the wrapper's self-healing steps. In steady state,
-each poll is a single file test: no agent is woken and no tokens are
-consumed.
+which triggers the wrapper's self-healing steps. Recovery is
+idempotent: every step checks whether its piece is already in
+place before recreating it, so a partial failure is simply
+retried on the next poll and repeated boots converge to the same
+state.
 
 ### Tailscale
 
