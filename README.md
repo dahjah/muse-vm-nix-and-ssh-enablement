@@ -22,7 +22,7 @@ Installation is performed by a Muse agent, not manually:
 3. The process pauses at three points for user action:
    - **Permissions settings.** In the Muse app or web UI, under
      Settings > Permissions, enable the necessary Direct network
-     protocols by setting the rows to **Ask**, and under
+     protocols (each is enabled with a checkbox), and under
      **Advanced** turn off **SNI mismatch rejection**. Both changes
      are required.
    - **Tailscale login approval.** Open the login link provided by

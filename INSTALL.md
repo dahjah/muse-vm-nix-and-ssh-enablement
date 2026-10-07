@@ -10,7 +10,7 @@ only), skip to the §9 checklist instead.
 
 **Steps only the user can do: ask for them, never work around them:**
 1. Settings > Permissions: enable the necessary Direct network
-   protocols (set the rows to **Ask**), and under **Advanced** turn
+   protocols (each is a checkbox), and under **Advanced** turn
    **off** SNI mismatch rejection. Both are required (see §2).
 2. Approve the Tailscale login URL in their browser when you present it.
    Optional and recommended: also offer the §7 ACL policy, which makes
@@ -75,9 +75,9 @@ recurring job is not to be surprised by it.
 
 ## 2. Settings only the user can change (Muse app / web Settings)
 
-- **Settings > Permissions > Direct network protocols**: rows (SSH, email send, mailbox, databases, FTP, external DNS, other TCP, other UDP), each **Deny or Ask only, no Allow**. Deny quietly refuses; Ask prompts per destination. Set all rows to Ask. External DNS on Ask is a standing permission, not per-lookup prompts.
+- **Settings > Permissions > Direct network protocols**: each protocol (SSH, email send, mailbox, databases, FTP, external DNS, other TCP, other UDP) is enabled with a checkbox. Enable them; the known-working configuration has all of them enabled.
 - Advanced: **SNI mismatch rejection** must be turned **off**; this setup does not work with it on.
-- Approvals are per single IP:port ("Always allow" covers only that destination). There is **no auto-approve**. Only the user can approve; the agent cannot. Prompt cards attribute the request to "your assistant", the VM has no network identity separate from the agent runtime, so daemon traffic (e.g. tailscaled's) is presented as the agent's. Setting the *Other UDP* row to **Deny** quietly refuses the UDP class (which cannot succeed through this gateway anyway) and shrinks prompt volume; the TCP set (control plane + DERP map) is finite and saturates via per-IP approvals.
+- Approvals are per single IP:port ("Always allow" covers only that destination). There is **no auto-approve**. Only the user can approve; the agent cannot. Prompt cards attribute the request to "your assistant", the VM has no network identity separate from the agent runtime, so daemon traffic (e.g. tailscaled's) is presented as the agent's. Leaving *Other UDP* disabled refuses the UDP class (which cannot succeed through this gateway anyway) and shrinks prompt volume; the TCP set (control plane + DERP map) is finite and saturates via per-IP approvals.
 
 ## 3. Network/gateway behavior
 
@@ -242,8 +242,8 @@ guard state writes behind the `HATCH_HOOK_DRY_RUN` check.
   fallback. Boot-time DERP/probe connection prompts are expected and
   the user approves them.
 - Approvals: the daemon's DERP sweeps and probes generate per-IP "wants to
-  connect" prompts under Ask (a finite set, roughly the DERP map, v4+v6).
-  No auto-approve exists. Setting the *Other UDP* protocol row to Deny
+  connect" prompts (a finite set, roughly the DERP map, v4+v6).
+  No auto-approve exists. Leaving the *Other UDP* protocol disabled
   silences the UDP class, which can never succeed here anyway.
 - **Optional security feature (recommended): the receive-only ACL
   policy.** Without it the VM is a normal tailnet node with full
@@ -278,8 +278,8 @@ expect the same *shape*, not the same values):
 Home (`/home/hatch`) and all scripts survive VM replacement, so a rebuild
 is mostly re-running and verifying, in this order:
 
-1. Settings > Permissions > Direct network protocols: set rows to **Ask**
-   (user only; the agent cannot).
+1. Settings > Permissions > Direct network protocols: enable the
+   protocols (checkboxes; user only, the agent cannot).
 2. Run any wrapper once, `/home/hatch/bin/nix --version`, and let nixwrap
    self-heal (mount point, nix.conf, profile link). If the store itself is
    gone, run `~/workspace/nix/setup-nix.sh` first.
