@@ -1,6 +1,6 @@
 # Muse VM: Nix + Tailscale SSH enablement
 
-This repository enables two capabilities on a Muse VM:
+Give your Muse VM two things it doesn't ship with:
 
 1. **The Nix package manager**, installed so that it survives VM
    reboots and replacements. Any package in nixpkgs (100k+) can then
