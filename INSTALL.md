@@ -439,15 +439,17 @@ Components (all in this repo):
 
 - `files/api-bridge/`: a self-contained Nix module.
   `api-bridge.nix` is a derivation packaging `server.py` (the HTTP
-  server) and `bridge-respond` (the answer-delivery tool) into the
-  profile as `muse-api-bridge-server` and `bridge-respond`.
+  server), `bridge-respond` (the answer-delivery tool), and
+  `bridge-key` (the API key manager) into the profile as
+  `muse-api-bridge-server`, `bridge-respond`, and `bridge-key`.
 - `files/scripts/bootstrap-api-bridge.sh`: idempotent starter,
   run by nixwrap on every nix invocation when the flag
   `/home/hatch/.config/vm-api-bridge/autostart` exists. It ensures
-  the runtime state in `~/bridge/` (job queue directories and the
-  bearer token, generated on first run; the token is runtime state
-  and never enters the Nix store) and starts the server if it is
-  not running.
+  the runtime state in `~/bridge/` (job queue directories; on
+  first run it also generates the initial API key and seeds
+  the keyring described under "API keys" below; all of it is
+  runtime state and never enters the Nix store) and starts
+  the server if it is not running.
 - `files/hooks/api-bridge.sh`: the poll script for the `api-bridge`
   hook, which claims queued jobs and wakes the bridge's side chat.
 
@@ -512,3 +514,32 @@ the full reply. One VM-specific trap: `~/bridge/bin/bridge-respond`
 must resolve to the packaged tool (a symlink to
 `/root/.nix-profile/bin/bridge-respond` works), because the worker
 calls it by that path.
+
+### API keys
+
+Clients authenticate with named keys, not one shared token.
+`~/bridge/keys.json` holds one entry per key (name, the
+SHA-256 hash of the key, creation date); the raw key is
+shown once when it is created and is never stored. The
+server reloads the file whenever it changes, so changes
+apply without a restart, and it logs the key's name with
+each job (`job ... queued key=djg-debian`). That log name is
+the only client attribution available: tailscaled runs in
+userspace mode here, so every client presents as 127.0.0.1
+regardless of which device connected. Manage keys with the
+packaged tool (also linked at `~/bridge/bin/bridge-key`):
+
+- `bridge-key add <name>`: create a key and print it once.
+- `bridge-key list`: show names, dates, and hash prefixes.
+- `bridge-key revoke <name>`: remove a key; that client
+  receives 401s from then on, and other clients are
+  unaffected.
+
+On first run the bootstrap generates the initial key into
+`~/bridge/token` and seeds the keyring with the same value
+under the name `initial`. Give each device its own named
+key, and revoke `initial` once no client uses it. If
+`keys.json` is ever deleted, the server falls back to the
+raw token in `~/bridge/token` until the keyring is rebuilt
+(`bridge-key import-legacy <name>` rebuilds it from that
+file).
