@@ -48,13 +48,33 @@ if [ -f /home/hatch/.config/vm-api-bridge/autostart ]; then
 fi
 export PATH="/root/.nix-profile/bin:$PATH"
 
-# xattr-retry shim (experimental, opt-in; INSTALL.md section 10): if
-# the compiled shim is present, preload it for the real tool. It
-# pads extended-attribute list size probes so asynchronous
-# taint-marking cannot overflow Nix's read buffer mid-listing.
-# Absent file = reference behavior, unchanged.
-if [ -f /home/hatch/bin/xattr-retry.so ]; then
-  LD_PRELOAD="/home/hatch/bin/xattr-retry.so${LD_PRELOAD:+:$LD_PRELOAD}"
+# xattr-retry shim: pads extended-attribute list size probes so
+# asynchronous taint-marking cannot overflow Nix's read buffer
+# mid-listing (INSTALL.md sections 4 and 10). The shim is
+# ensured here, in code, not left to a setup step: if the .so
+# is missing, fetch the pinned CI-built release asset and
+# verify it against the pinned checksum before use. The same
+# pin lives in setup-nix.sh; update both together. If the
+# fetch fails, warn and continue unshimmed (the section 4
+# fallback procedure then applies to installs). A .so already
+# present (for example a source build for another
+# architecture) is never overwritten.
+XATTR_SHIM=/home/hatch/bin/xattr-retry.so
+XATTR_SHIM_URL=https://github.com/dahjah/muse-vm-nix-and-ssh-enablement/releases/download/shim-v1/xattr-retry.so
+XATTR_SHIM_SHA256=19038c96d55f08eda8388b41a68be4c9bcdc3554fa7fc6e1fe5985c5189852e2
+if [ ! -f "$XATTR_SHIM" ]; then
+  shim_tmp="$XATTR_SHIM.tmp.$$"
+  if command -v curl >/dev/null 2>&1 && \
+     curl -fsSL --max-time 30 -o "$shim_tmp" "$XATTR_SHIM_URL" 2>/dev/null && \
+     echo "$XATTR_SHIM_SHA256  $shim_tmp" | sha256sum -c - >/dev/null 2>&1; then
+    mv "$shim_tmp" "$XATTR_SHIM"
+  else
+    rm -f "$shim_tmp"
+    echo "nixwrap: warning: xattr-retry shim could not be fetched; continuing without it (INSTALL.md section 4 fallback applies)" >&2
+  fi
+fi
+if [ -f "$XATTR_SHIM" ]; then
+  LD_PRELOAD="$XATTR_SHIM${LD_PRELOAD:+:$LD_PRELOAD}"
   export LD_PRELOAD
 fi
 tool=$(basename "$0")

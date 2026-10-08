@@ -42,23 +42,14 @@ each script:
   nix-copy-closure nixsh tailscale tailscaled; do ln -sf nixwrap
   /home/hatch/bin/$t; done`
 - Flag: `touch ~/.config/vm-tailscale/autostart`
-- Fetch the prebuilt xattr shim. CI builds it from
-  `files/bin/xattr-retry.c` on each `shim-v*` tag and publishes
-  it as a release asset, so no compiled binary is committed to
-  this repo:
-  `cd /home/hatch/bin && curl -fsSLO https://github.com/dahjah/muse-vm-nix-and-ssh-enablement/releases/download/shim-v1/xattr-retry.so && curl -fsSLO https://github.com/dahjah/muse-vm-nix-and-ssh-enablement/releases/download/shim-v1/xattr-retry.so.sha256 && sha256sum -c xattr-retry.so.sha256 && rm xattr-retry.so.sha256`
-  Fallback (a different architecture, or the asset is
-  unreachable): compile from source with the system gcc:
-  `gcc -shared -fPIC -O2 -o /home/hatch/bin/xattr-retry.so /home/hatch/workspace/nix/xattr-retry.c -ldl`
 
-**Phase C: Nix:** run
-`LD_PRELOAD=/home/hatch/bin/xattr-retry.so sh ~/workspace/nix/setup-nix.sh`
-(repo: `files/nix/setup-nix.sh`; the preload covers the
-script's own nix calls, which do not go through the wrappers;
-every later nix call gets the shim from nixwrap), then the
-bare installs of §4: `/home/hatch/bin/nix-env -iA
-nixpkgs.hello` and `/home/hatch/bin/nix-env -iA
-nixpkgs.tailscale`. Done when `nix --version` prints 2.35.2
+**Phase C: Nix:** run `sh ~/workspace/nix/setup-nix.sh`
+(repo: `files/nix/setup-nix.sh`; the script ensures the
+xattr-retry shim before its own nix calls, which do not go
+through the wrappers, and every later nix call gets it from
+nixwrap, §4), then the bare installs of §4:
+`/home/hatch/bin/nix-env -iA nixpkgs.hello` and
+`/home/hatch/bin/nix-env -iA nixpkgs.tailscale`. Done when `nix --version` prints 2.35.2
 and both installs exit 0. If an install ever fails naming a
 `user.hatch_tainted.<new-suffix>` attribute, append that
 suffix to `ignored-acls` in §4's config (all three places
@@ -137,10 +128,16 @@ commands, in any order, against a store of any temperature:
 1. `/home/hatch/bin/nix-env -iA nixpkgs.hello`
 2. `/home/hatch/bin/nix-env -iA nixpkgs.tailscale`
 
-The shim: `xattr-retry.so` (source: `files/bin/xattr-retry.c`;
-Phase B fetches the CI-built release asset to
-`/home/hatch/bin/xattr-retry.so`; nixwrap preloads it for
-every tool invocation). Nix lists a
+The shim: `xattr-retry.so` (source: `files/bin/xattr-retry.c`).
+It is provisioned by the tooling, not by a setup step:
+nixwrap and setup-nix.sh carry a pinned release URL and
+checksum, fetch the CI-built asset to
+`/home/hatch/bin/xattr-retry.so` whenever it is missing, and
+preload it for every nix invocation. A file already present
+is never overwritten, which is the one manual case: on a
+machine of a different architecture, compile the source
+(`gcc -shared -fPIC -O2 -o /home/hatch/bin/xattr-retry.so /home/hatch/workspace/nix/xattr-retry.c -ldl`)
+and place the result there. Nix lists a
 file's extended attributes by probing the list size and then
 reading into a buffer of that size. The host adds the
 `user.hatch_tainted*` markers to new files one by one, and a
@@ -193,11 +190,14 @@ binary and gives up, and nothing retries it until the next manual
 nix invocation.
 6. execs the real tool from `/root/.nix-profile/bin`.
 
-The wrapper also preloads the xattr-retry shim (§4,
-"Installing packages") for the tool whenever
-`/home/hatch/bin/xattr-retry.so` exists; Phase B compiles it,
-and deleting it disables the shim, in which case the §4
-fallback procedure applies to installs.
+The wrapper also ensures the xattr-retry shim (§4,
+"Installing packages"): if `/home/hatch/bin/xattr-retry.so`
+is missing, the wrapper fetches the pinned CI-built release
+asset and verifies its checksum before preloading it, so
+the shim cannot be silently skipped. Deleting the file only
+causes a refetch on the next invocation; the shim is out of
+service only if the fetch itself fails, in which case the
+wrapper warns and the §4 fallback procedure applies.
 
 Full-reinstall script (fresh VM): **`~/workspace/nix/setup-nix.sh`**: it
 installs Nix itself but does NOT create the symlink farm, install packages,
@@ -355,9 +355,9 @@ is mostly re-running and verifying, in this order:
    required protocols (§2; user only, the agent cannot).
 2. Run any wrapper once, `/home/hatch/bin/nix --version`, and let nixwrap
    self-heal (mount point, nix.conf, profile link). If the store itself is
-   gone, run `~/workspace/nix/setup-nix.sh` first. Confirm
-   `/home/hatch/bin/xattr-retry.so` exists (refetch per
-   Phase B if not; nixwrap preloads it, §4).
+   gone, run `~/workspace/nix/setup-nix.sh` first. The
+   xattr-retry shim needs no check: nixwrap refetches it
+   automatically if it is missing (§4).
 3. `/home/hatch/bin/nix-env -iA nixpkgs.tailscale` if the
    profile lacks it.
 4. Confirm the hook `nix-boot-trigger` exists and is enabled (definitions

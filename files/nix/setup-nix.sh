@@ -15,6 +15,30 @@ set -e
 # Backing directory for the store: default is the persistent disk
 # volume. Pass /var/tmp/nixroot for the tmpfs stage (INSTALL.md
 # section 4, "Installing packages").
+
+# xattr-retry shim: ensure the pinned CI-built .so is present
+# and preload it for everything this script runs, since these
+# nix calls do not pass through the wrappers (see nixwrap for
+# the full explanation). The pin here and in nixwrap must
+# match. A .so already present is never overwritten.
+XATTR_SHIM=/home/hatch/bin/xattr-retry.so
+XATTR_SHIM_URL=https://github.com/dahjah/muse-vm-nix-and-ssh-enablement/releases/download/shim-v1/xattr-retry.so
+XATTR_SHIM_SHA256=19038c96d55f08eda8388b41a68be4c9bcdc3554fa7fc6e1fe5985c5189852e2
+if [ ! -f "$XATTR_SHIM" ]; then
+  shim_tmp="$XATTR_SHIM.tmp.$$"
+  if curl -fsSL --max-time 30 -o "$shim_tmp" "$XATTR_SHIM_URL" && \
+     echo "$XATTR_SHIM_SHA256  $shim_tmp" | sha256sum -c - >/dev/null; then
+    mv "$shim_tmp" "$XATTR_SHIM"
+  else
+    rm -f "$shim_tmp"
+    echo "setup-nix.sh: warning: xattr-retry shim could not be fetched; continuing without it" >&2
+  fi
+fi
+if [ -f "$XATTR_SHIM" ]; then
+  LD_PRELOAD="$XATTR_SHIM${LD_PRELOAD:+:$LD_PRELOAD}"
+  export LD_PRELOAD
+fi
+
 BACKING=${1:-/home/hatch/nixdisk}
 mkdir -p "$BACKING" /nix /etc/nix
 cat > /etc/nix/nix.conf <<'CONF'
