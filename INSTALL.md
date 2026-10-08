@@ -356,8 +356,12 @@ fails with `error: querying extended attributes of
 probes a file's attribute-list size before reading it, and a
 marker landing in between overflows the buffer; Nix does not
 retry. Appending suffixes does not fix this one. The
-reference install never hit it; §4's staged procedure is
-what it used. The .drv files created before such a failure
+reference install never hit it. Where it did appear, on an
+instance pointed cold at a large closure as its first
+install, §4's two stages avoided it: the tmpfs stage proves
+the toolchain where markers cannot interfere, and on disk
+the small closures are registered before the large one is
+attempted. The .drv files created before such a failure
 persist, so re-running the same install command resumes
 instantiation from them rather than starting over.
 
