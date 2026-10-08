@@ -174,10 +174,30 @@ def _live_session():
     return None
 
 
+def _norm_msg(m):
+    """A message normalized the way a client may echo it back: some
+    clients (opencode does) turn a null content into an empty
+    string, or drop the field. Compare with that tolerance;
+    everything else (roles, tool call ids, names, arguments) must
+    match exactly."""
+    if not isinstance(m, dict):
+        return m
+    m = dict(m)
+    if m.get("content") is None:
+        m["content"] = ""
+    return m
+
+
+def _msgs_equal(a, b):
+    return (len(a) == len(b)
+            and all(_norm_msg(x) == _norm_msg(y) for x, y in zip(a, b)))
+
+
 def _continues(sess, messages):
-    """True when `messages` is the session's history plus the exact
-    assistant tool_calls message this server emitted, plus only
-    tool-role messages after it."""
+    """True when `messages` is the session's history plus the
+    assistant tool_calls message this server emitted (compared
+    with _norm_msg tolerance), plus only tool-role messages
+    after it."""
     if sess.state != "live" or sess.last_messages is None:
         return False
     if sess.last_assistant_msg is None:
@@ -185,11 +205,14 @@ def _continues(sess, messages):
     prev = sess.last_messages
     if len(messages) <= len(prev):
         return False
-    if messages[:len(prev)] != prev:
+    if not _msgs_equal(messages[:len(prev)], prev):
         return False
-    if messages[len(prev)] != sess.last_assistant_msg:
+    if _norm_msg(messages[len(prev)]) != _norm_msg(sess.last_assistant_msg):
         return False
-    return all(m.get("role") == "tool" for m in messages[len(prev) + 1:])
+    rest = messages[len(prev) + 1:]
+    if not rest:
+        return False
+    return all(m.get("role") == "tool" for m in rest)
 
 
 def parse_envelope(payload):
