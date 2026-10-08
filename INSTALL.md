@@ -59,10 +59,9 @@ flag.
 (repo: `files/nix/setup-nix.sh`; the script ensures the
 xattr-retry shim before its own nix calls, which do not go
 through the wrappers, and every later nix call gets it from
-nixwrap, §4), then the bare installs of §4:
-`/home/hatch/bin/nix-env -iA nixpkgs.hello` and
+nixwrap, §4), then the bare install of §4:
 `/home/hatch/bin/nix-env -iA nixpkgs.tailscale`. Done when `nix --version` prints 2.35.2
-and both installs exit 0. If an install ever fails naming a
+and the install exits 0. If an install ever fails naming a
 `user.hatch_tainted.<new-suffix>` attribute, append the
 full attribute name to `ignored-acls.txt` (§4) and retry. If the shim is unavailable or
 misbehaves, §4's fallback procedure is the manual path.
@@ -142,10 +141,10 @@ file.
 ### Installing packages
 
 With the shim in place, installs are plain `nix-env -iA`
-commands, in any order, against a store of any temperature:
+commands against a store of any temperature. The setup
+itself needs one:
 
-1. `/home/hatch/bin/nix-env -iA nixpkgs.hello`
-2. `/home/hatch/bin/nix-env -iA nixpkgs.tailscale`
+`/home/hatch/bin/nix-env -iA nixpkgs.tailscale`
 
 The shim: `xattr-retry.so` (source: `files/bin/xattr-retry.c`).
 It is provisioned by the tooling, not by a setup step:
@@ -363,7 +362,7 @@ rewrites its own log to the newest 2000 lines whenever it passes 5 MB.
 A finished setup looks like this (example node name and address shown;
 expect the same *shape*, not the same values):
 
-- Nix 2.35.2 working; hello and tailscale installed in the profile.
+- Nix 2.35.2 working; tailscale installed in the profile.
 - Hook `nix-boot-trigger` enabled, polling every 5 s; marker present.
 - tailscaled running with autostart enabled (§7); node online, Health
   `[]` (no DERP or ACL warnings).
