@@ -15,14 +15,17 @@ alternatives.
 3. Execute its phases in order. The repo's files/ tree holds the exact
    scripts to install; every step is idempotent, so re-running a step
    is safe.
-4. Three steps need me, and only me: changing a Settings permission,
-   approving the VM's Tailscale login in my browser (and, only if I
-   choose it, saving the optional ACL policy that makes the VM
-   receive-only), and approving a burst of connection prompts when
-   Tailscale first starts. Stop at those points, tell me exactly what
+4. Three steps need me, and only me: changing the Settings the
+   guide requires (the Direct network protocol toggles, and SNI
+   mismatch rejection off under Advanced), approving the VM's
+   Tailscale login in my browser (and, only if I choose it, saving
+   the optional ACL policy that makes the VM receive-only), and
+   approving a burst of connection prompts when Tailscale first
+   starts. Stop at those points, tell me exactly what
    to do, and continue when I confirm.
 5. Report success only when every check in the guide's "Expected end
-   state" section passes. If a step fails, consult the guide's
-   troubleshooting notes for that section before trying anything
-   else, and tell me what failed and what you did about it.
+   state" section passes (the guide's doctor script exits 0). If a
+   step fails, consult the guide's rebuild checklist (§9) and the
+   failing section's own notes before trying anything else, and
+   tell me what failed and what you did about it.
 ```
