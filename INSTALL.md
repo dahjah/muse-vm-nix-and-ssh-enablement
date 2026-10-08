@@ -34,6 +34,7 @@ each script:
 | `files/hooks/nix-boot-trigger.sh` | `/home/hatch/hooks/scripts/nix-boot-trigger.sh` |
 | `files/nix/setup-nix.sh` | `/home/hatch/workspace/nix/setup-nix.sh` |
 | `files/nix/nix-install-settled.sh` | `/home/hatch/workspace/nix/nix-install-settled.sh` |
+| `files/bin/xattr-retry.c` | `/home/hatch/workspace/nix/xattr-retry.c` |
 
 - Create directories: `~/bin`, `~/scripts`, `~/.config/vm-tailscale`,
   `~/.local/state/tailscale`.
@@ -42,9 +43,14 @@ each script:
   nix-copy-closure nixsh tailscale tailscaled; do ln -sf nixwrap
   /home/hatch/bin/$t; done`
 - Flag: `touch ~/.config/vm-tailscale/autostart`
+- Compile the xattr shim (uses the system gcc):
+  `gcc -shared -fPIC -O2 -o /home/hatch/bin/xattr-retry.so /home/hatch/workspace/nix/xattr-retry.c -ldl`
+  nixwrap preloads it for every nix tool invocation (§4).
 
 **Phase C: Nix:** run `sh ~/workspace/nix/setup-nix.sh` (repo:
-`files/nix/setup-nix.sh`), then install the packages with the
+`files/nix/setup-nix.sh`; if the Phase B shim is compiled, run
+it preloaded: `LD_PRELOAD=/home/hatch/bin/xattr-retry.so sh
+~/workspace/nix/setup-nix.sh`), then install the packages with the
 settle-aware installer:
 `sh ~/workspace/nix/nix-install-settled.sh hello tailscale`
 (§4, "Installing packages", explains why a bare `nix-env -iA`
@@ -129,6 +135,18 @@ fails the read with `error: querying extended attributes of
 does not retry. `ignored-acls` cannot help here: it applies
 after the list has been read. (A different failure from the
 "removing extended attribute" one above; §10 covers both.)
+
+Primary defense: an LD_PRELOAD shim, `xattr-retry.so` (source:
+`files/bin/xattr-retry.c`; compiled in Phase B). It pads every
+attribute-list size probe by 256 bytes (the whole marker
+family totals 61), so the buffer Nix allocates has room for
+markers that have not landed yet and its read succeeds
+regardless of timing; a read that still overflows is retried
+once the list size stabilizes. nixwrap preloads it for the
+real tool on every invocation, so all nix commands get it.
+The settle-aware installer below is the second layer, for
+hosts where marking is slow enough that even padded reads
+straddle a landing.
 
 The vulnerable step is instantiation itself: creating a large
 package's .drv closure (stdenv's bootstrap chain plus the
@@ -332,7 +350,8 @@ is mostly re-running and verifying, in this order:
    required protocols (§2; user only, the agent cannot).
 2. Run any wrapper once, `/home/hatch/bin/nix --version`, and let nixwrap
    self-heal (mount point, nix.conf, profile link). If the store itself is
-   gone, run `~/workspace/nix/setup-nix.sh` first.
+   gone, run `~/workspace/nix/setup-nix.sh` first. Confirm
+   `/home/hatch/bin/xattr-retry.so` exists; if not, compile it per Phase B.
 3. `sh ~/workspace/nix/nix-install-settled.sh tailscale` if the
    profile lacks it (§4).
 4. Confirm the hook `nix-boot-trigger` exists and is enabled (definitions
@@ -367,7 +386,10 @@ between overflows the buffer; Nix does not retry. Appending
 suffixes does not fix this one. Use the settle-aware installer
 in §4, which resumes instantiation until the package's full
 .drv closure exists, waits for the store's attribute count
-to stabilize, and only then installs.
+to stabilize, and only then installs. On hosts where the
+marking is slow, the first line of defense is the §4 shim
+(xattr-retry.so, preloaded by nixwrap), which removes the
+race at the call site by padding the size probe.
 
 ## 11. Optional module: API Bridge (OpenAI-compatible endpoint)
 
