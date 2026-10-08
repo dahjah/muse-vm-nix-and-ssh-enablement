@@ -375,8 +375,14 @@ LD_PRELOAD shim (`files/bin/xattr-retry.c`) that pads
 attribute-list size probes by 256 bytes. The marker family's
 full list totals 61 bytes, so a padded probe cannot
 under-allocate against markers that land after the probe,
-which is the exact overflow behind this failure. To evaluate
-it: compile with
+which is the exact overflow behind this failure. Evaluated
+against a live reproduction (a cold instantiation into a
+fresh store root on the marked filesystem, which fails
+unshimmed within the first ~150 paths): with the shim, the
+hello closure instantiated fully (765 paths), a repeat
+unshimmed run failed again, and tailscale's full closure
+instantiated cold in a single pass (2,474 paths). To
+evaluate it on another host: compile with
 `gcc -shared -fPIC -O2 -o /home/hatch/bin/xattr-retry.so /home/hatch/workspace/nix/xattr-retry.c`
 (copy `files/bin/xattr-retry.c` to that source path first);
 nixwrap preloads it for every tool invocation while the .so
