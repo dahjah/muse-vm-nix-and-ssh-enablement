@@ -4,8 +4,8 @@
 
 You are being handed a working system to reproduce.
 Execute in the order below; every script is idempotent, so re-running a
-step is safe. Sections §1–§10 explain *why*; the `files/` tree holds the
-exact scripts. If `/home/hatch` already contains the files (same VM, state loss
+step is safe. Sections §1–§10 explain *why*, and §11 documents an
+optional module; the `files/` tree holds the exact scripts. If `/home/hatch` already contains the files (same VM, state loss
 only), skip to the §9 checklist instead.
 
 **Steps only the user can do: ask for them, never work around them:**
@@ -63,8 +63,8 @@ nixwrap, §4), then the bare installs of §4:
 `/home/hatch/bin/nix-env -iA nixpkgs.hello` and
 `/home/hatch/bin/nix-env -iA nixpkgs.tailscale`. Done when `nix --version` prints 2.35.2
 and both installs exit 0. If an install ever fails naming a
-`user.hatch_tainted.<new-suffix>` attribute, append that
-suffix to the `ignored-acls` list (§4) and retry. If the shim is unavailable or
+`user.hatch_tainted.<new-suffix>` attribute, append the
+full attribute name to `ignored-acls.txt` (§4) and retry. If the shim is unavailable or
 misbehaves, §4's fallback procedure is the manual path.
 
 **Phase D: boot hook:** register `nix-boot-trigger` exactly as in §6,
@@ -221,7 +221,9 @@ wrapper warns and the §4 fallback procedure applies.
 Full-reinstall script (fresh VM): **`~/workspace/nix/setup-nix.sh`**: it
 installs Nix itself but does NOT create the symlink farm, install packages,
 or lay down any scripts; on a fresh instance follow §0 Phase B/C for those.
-Installed via nix so far: hello, attr 2.6.0, cowsay, tailscale 1.102.5.
+Installed via nix so far: hello, attr 2.6.0, cowsay, fd 10.5.0,
+tailscale 1.102.5, and the §11 bridge package (nix itself, 2.35.2,
+came with the installer).
 
 ## 5. Why not systemd (persistence investigation)
 
@@ -530,7 +532,7 @@ SHA-256 hash of the key, creation date); the raw key is
 shown once when it is created and is never stored. The
 server reloads the file whenever it changes, so changes
 apply without a restart, and it logs the key's name with
-each job (`job ... queued key=djg-debian`). That log name is
+each job (`job ... queued key=<name>`). That log name is
 the only client attribution available: tailscaled runs in
 userspace mode here, so every client presents as 127.0.0.1
 regardless of which device connected. Manage keys with the
