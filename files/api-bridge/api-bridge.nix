@@ -17,7 +17,7 @@ pkgs.stdenv.mkDerivation {
   nativeBuildInputs = [ pkgs.makeWrapper ];
 
   # src is a plain directory, not an archive; skip unpacking and
-  # copy from $src. Only the two code files are installed; runtime
+  # copy from $src. Only the code files are installed; runtime
   # state never enters the package.
   dontUnpack = true;
   installPhase = ''
@@ -25,7 +25,8 @@ pkgs.stdenv.mkDerivation {
     mkdir -p $out/libexec $out/bin
     cp $src/server.py $out/libexec/server.py
     cp $src/bridge-respond $out/bin/bridge-respond
-    chmod +x $out/bin/bridge-respond
+    cp $src/bridge-key $out/bin/bridge-key
+    chmod +x $out/bin/bridge-respond $out/bin/bridge-key
     makeWrapper ${pkgs.python3}/bin/python3 $out/bin/muse-api-bridge-server \
       --add-flags "$out/libexec/server.py"
     runHook postInstall

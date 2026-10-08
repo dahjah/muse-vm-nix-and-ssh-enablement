@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Manage named API keys for the Muse API Bridge.
+
+Keys live in ~/bridge/keys.json as SHA-256 hashes with names;
+the raw key is shown once, at creation. The bridge server
+reloads the file whenever it changes, so add/revoke take
+effect without a restart, and it logs the key's name with
+each job (the tailnet presents every client as 127.0.0.1 in
+this setup, so the key name is the only client attribution
+available).
+
+Usage:
+  bridge-key add <name>            create a key, print it once
+  bridge-key list                  show key names and metadata
+  bridge-key revoke <name>         remove a key
+  bridge-key import-legacy [name]  import ~/bridge/token as a
+                                   named key (default name:
+                                   legacy-token)
+"""
+import hashlib
+import json
+import os
+import re
+import secrets
+import sys
+import tempfile
+from datetime import datetime, timezone
+
+BASE = os.path.expanduser("~/bridge")
+KEYS_FILE = os.path.join(BASE, "keys.json")
+TOKEN_FILE = os.path.join(BASE, "token")
+NAME_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def die(msg):
+    print("bridge-key: " + msg, file=sys.stderr)
+    sys.exit(1)
+
+
+def load():
+    try:
+        with open(KEYS_FILE) as f:
+            data = json.load(f)
+    except OSError:
+        return {"keys": []}
+    except ValueError:
+        die("keys.json is not valid JSON; fix or remove " + KEYS_FILE)
+    if not isinstance(data.get("keys"), list):
+        die("keys.json has no 'keys' list; fix or remove " + KEYS_FILE)
+    return data
+
+
+def save(data):
+    fd, tmp = tempfile.mkstemp(dir=BASE, prefix=".keys-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, KEYS_FILE)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def digest(raw):
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def check_name(name):
+    if not NAME_OK.match(name or ""):
+        die("invalid key name %r (letters, digits, dot, dash, underscore)" % name)
+
+
+def cmd_add(name):
+    check_name(name)
+    data = load()
+    if any(e["name"] == name for e in data["keys"]):
+        die("a key named %r already exists" % name)
+    raw = secrets.token_hex(24)
+    data["keys"].append({"name": name, "sha256": digest(raw), "created": now()})
+    save(data)
+    print("key %r created. Store it now; it is not shown again:" % name)
+    print(raw)
+
+
+def cmd_list():
+    data = load()
+    if not data["keys"]:
+        print("no keys in " + KEYS_FILE)
+        return
+    for e in data["keys"]:
+        print("%-20s created %s  sha256 %s..." % (e["name"], e.get("created", "?"), e["sha256"][:10]))
+
+
+def cmd_revoke(name):
+    data = load()
+    kept = [e for e in data["keys"] if e["name"] != name]
+    if len(kept) == len(data["keys"]):
+        die("no key named %r" % name)
+    data["keys"] = kept
+    save(data)
+    print("key %r revoked" % name)
+
+
+def cmd_import_legacy(name):
+    check_name(name)
+    try:
+        raw = open(TOKEN_FILE).read().strip()
+    except OSError:
+        die("no legacy token at " + TOKEN_FILE)
+    if not raw:
+        die("legacy token file is empty")
+    data = load()
+    if any(e["sha256"] == digest(raw) for e in data["keys"]):
+        print("legacy token is already in the keyring")
+        return
+    if any(e["name"] == name for e in data["keys"]):
+        die("a key named %r already exists" % name)
+    data["keys"].append({"name": name, "sha256": digest(raw), "created": now()})
+    save(data)
+    print("legacy token imported as key %r" % name)
+
+
+def main(argv):
+    if len(argv) < 2:
+        print(__doc__.strip())
+        return 2
+    cmd, args = argv[1], argv[2:]
+    if cmd == "add" and len(args) == 1:
+        cmd_add(args[0])
+    elif cmd == "list" and not args:
+        cmd_list()
+    elif cmd == "revoke" and len(args) == 1:
+        cmd_revoke(args[0])
+    elif cmd == "import-legacy" and len(args) <= 1:
+        cmd_import_legacy(args[0] if args else "legacy-token")
+    else:
+        print(__doc__.strip())
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

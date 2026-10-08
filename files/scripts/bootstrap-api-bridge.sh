@@ -19,6 +19,24 @@ if [ ! -f "$BRIDGE_HOME/token" ]; then
     && echo "$(ts) generated bridge token" >> "$LOG"
 fi
 
+# Seed the named keyring from that token (the server prefers
+# keys.json when it exists; bridge-key manages it from then on).
+# The raw key stays readable in the token file, which is how
+# the user learns the initial key; its keyring name is "initial".
+if [ ! -f "$BRIDGE_HOME/keys.json" ]; then
+  python3 - "$BRIDGE_HOME" <<'PYEOF' && echo "$(ts) seeded bridge keyring (key name: initial)" >> "$LOG"
+import hashlib, json, os, sys
+base = sys.argv[1]
+token = open(os.path.join(base, "token")).read().strip()
+data = {"keys": [{"name": "initial", "sha256": hashlib.sha256(token.encode()).hexdigest(), "created": "bootstrap"}]}
+path = os.path.join(base, "keys.json")
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+os.chmod(path, 0o600)
+PYEOF
+fi
+
 if [ ! -x "$BIN" ]; then
   echo "$(ts) server binary missing" >> "$LOG"
   exit 0

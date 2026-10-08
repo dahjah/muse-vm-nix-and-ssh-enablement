@@ -7,6 +7,7 @@ Accepts POST /v1/chat/completions, queues the request as a job file in
 the API Bridge side chat after a hook wakes it). Returns the answer
 as an OpenAI chat completion. Jobs are serialized: one at a time.
 """
+import hashlib
 import json
 import os
 import threading
@@ -17,7 +18,43 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 BASE = os.path.expanduser("~/bridge")
 INBOX = os.path.join(BASE, "inbox")
 OUTBOX = os.path.join(BASE, "outbox")
-TOKEN = open(os.path.join(BASE, "token")).read().strip()
+KEYS_FILE = os.path.join(BASE, "keys.json")
+TOKEN_FILE = os.path.join(BASE, "token")
+_keyring = {"stamp": None, "by_hash": {}}
+
+
+def _load_keyring():
+    """Map of sha256 hex digest -> key name, for request auth.
+
+    Source of truth is keys.json (managed by bridge-key); it is
+    reloaded whenever the file changes, so add/revoke apply
+    without a server restart. When keys.json does not exist,
+    fall back to the legacy single token in ~/bridge/token.
+    """
+    try:
+        stamp = ("keys", os.path.getmtime(KEYS_FILE))
+    except OSError:
+        try:
+            stamp = ("legacy", os.path.getmtime(TOKEN_FILE))
+        except OSError:
+            stamp = ("legacy", None)
+    if _keyring["stamp"] != stamp:
+        by_hash = {}
+        try:
+            if stamp[0] == "keys":
+                with open(KEYS_FILE) as f:
+                    data = json.load(f)
+                by_hash = {e["sha256"]: e["name"] for e in data.get("keys", [])}
+            else:
+                with open(TOKEN_FILE) as f:
+                    legacy = f.read().strip()
+                if legacy:
+                    by_hash = {hashlib.sha256(legacy.encode()).hexdigest(): "legacy-token"}
+        except (OSError, ValueError, KeyError):
+            by_hash = _keyring["by_hash"]  # keep the last good keyring
+        _keyring["by_hash"] = by_hash
+        _keyring["stamp"] = stamp
+    return _keyring["by_hash"]
 TIMEOUT = int(os.environ.get("BRIDGE_TIMEOUT", "600"))
 JOB_LOCK = threading.Lock()
 
@@ -52,13 +89,18 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _authorized(self):
-        return self.headers.get("Authorization", "") == "Bearer " + TOKEN
+        """Return the name of the presented API key, or None."""
+        header = self.headers.get("Authorization", "")
+        if not header.startswith("Bearer "):
+            return None
+        digest = hashlib.sha256(header[7:].strip().encode()).hexdigest()
+        return _load_keyring().get(digest)
 
     def do_GET(self):
         if self.path == "/health":
             self._send_json(200, {"status": "ok"})
             return
-        if not self._authorized():
+        if self._authorized() is None:
             self._send_json(401, {"error": {"message": "unauthorized",
                                             "type": "auth_error"}})
             return
@@ -75,7 +117,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": {"message": "not found",
                                             "type": "invalid_request_error"}})
             return
-        if not self._authorized():
+        key_name = self._authorized()
+        if key_name is None:
             self._send_json(401, {"error": {"message": "unauthorized",
                                             "type": "auth_error"}})
             return
@@ -101,7 +144,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(tmp, "w") as f:
                 json.dump(job, f)
             os.rename(tmp, job_path)
-            print("job %s queued" % job_id, flush=True)
+            print("job %s queued key=%s" % (job_id, key_name), flush=True)
 
             deadline = time.time() + TIMEOUT
             content = None
