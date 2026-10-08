@@ -40,6 +40,12 @@ fi
 if [ -f /home/hatch/.config/vm-tailscale/autostart ]; then
   /home/hatch/scripts/bootstrap-tailscale.sh >/dev/null 2>&1 || true
 fi
+
+# Same opt-in pattern for the API Bridge server (module: api-bridge):
+# keep the OpenAI-compatible bridge server running; no-op when already up.
+if [ -f /home/hatch/.config/vm-api-bridge/autostart ]; then
+  /home/hatch/scripts/bootstrap-api-bridge.sh >/dev/null 2>&1 || true
+fi
 export PATH="/root/.nix-profile/bin:$PATH"
 tool=$(basename "$0")
 if [ "$tool" = "nixwrap" ] || [ "$tool" = "nixsh" ]; then

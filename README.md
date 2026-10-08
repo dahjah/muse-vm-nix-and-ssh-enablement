@@ -86,6 +86,18 @@ so the node remains registered across reboots without re-login.
 | `files/hooks/nix-boot-trigger.json` | Hook registration parameters |
 | `files/scripts/bootstrap-tailscale.sh` | Idempotent `tailscaled` starter |
 | `files/tailscale/policy.jsonc` | Tailscale ACL policy for the admin console |
+| `files/api-bridge/` | Optional module: OpenAI-compatible bridge package (server, respond tool, derivation) |
+| `files/scripts/bootstrap-api-bridge.sh` | Idempotent starter for the bridge server |
+| `files/hooks/api-bridge.sh` | Poll script for the bridge job hook |
+
+## Optional module: API Bridge
+
+The repository also contains an optional module that exposes the
+VM's Muse agent as an OpenAI-compatible HTTP endpoint on the
+tailnet (`files/api-bridge/`, packaged with Nix), for users who
+want to point their own programs or agents at Muse over
+Tailscale. It is opt-in and independent of the base setup;
+`INSTALL.md` §11 covers installation and operation.
 
 ## Security
 

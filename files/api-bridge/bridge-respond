@@ -1,0 +1,21 @@
+#!/bin/sh
+# bridge-respond <job-id>   -- the agent's answer goes on stdin.
+# Delivers the answer to the waiting bridge server by writing the
+# job's outbox file atomically. First valid call wins.
+id="$1"
+case "$id" in
+  ''|*[!a-f0-9]*) echo "bridge-respond: bad or missing job id" >&2; exit 2 ;;
+esac
+inbox="/home/hatch/bridge/inbox/$id.json"
+outbox="/home/hatch/bridge/outbox/$id.txt"
+if [ ! -f "$inbox" ]; then
+  echo "bridge-respond: job $id is no longer pending (timed out or already answered)"
+  exit 1
+fi
+if [ -e "$outbox" ]; then
+  echo "bridge-respond: job $id already answered"
+  exit 1
+fi
+tmp="$outbox.tmp.$$"
+cat > "$tmp" && mv "$tmp" "$outbox"
+echo "bridge-respond: delivered response for job $id"

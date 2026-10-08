@@ -123,7 +123,8 @@ point to `nixwrap`, which on every invocation:
 2. bind-mounts `/home/hatch/nixdisk` over `/nix` if not mounted,
 3. recreates `/etc/nix/nix.conf` if absent (content above),
 4. recreates `/root/.nix-profile` symlink and `/root/.nix-channels` if absent,
-5. runs the tailscale bootstrap (§7) if its opt-in flag exists.
+5. runs the companion bootstraps whose opt-in flags exist
+   (tailscale, §7; the API Bridge module, §11).
 
 The order of steps 3-5 matters: the bootstrap starts a binary that
 lives in the profile, so the profile must be recreated first. If
@@ -301,6 +302,9 @@ is mostly re-running and verifying, in this order:
    `tailscale up --ssh --hostname=muse-vm` (adding
    `--advertise-tags=tag:muse` if the ACL policy is in use) and
    approve the login URL in a browser.
+8. If the API Bridge module (§11) is enabled, confirm its flag
+   exists and the server answers `curl 127.0.0.1:8080/health` after
+   the first nix call of the boot.
 
 ## 10. Known quirk: taint-marker suffixes
 
@@ -309,3 +313,90 @@ boots (two variants have been seen: `.n` and `.u`). If an
 install ever fails naming a `user.hatch_tainted.<new-suffix>`
 attribute, append that exact suffix to `ignored-acls` in all three
 places it lives (§4) and retry.
+
+## 11. Optional module: API Bridge (OpenAI-compatible endpoint)
+
+An optional add-on that exposes this VM's Muse agent as an
+OpenAI-compatible HTTP endpoint on the tailnet, so programs on the
+user's other devices can send chat requests to it. It spends the
+user's normal Muse usage (each request is an ordinary agent turn
+in a dedicated side chat). Skip this section entirely if the user
+does not want it.
+
+Components (all in this repo):
+
+- `files/api-bridge/`: a self-contained Nix module.
+  `api-bridge.nix` is a derivation packaging `server.py` (the HTTP
+  server) and `bridge-respond` (the answer-delivery tool) into the
+  profile as `muse-api-bridge-server` and `bridge-respond`.
+- `files/scripts/bootstrap-api-bridge.sh`: idempotent starter,
+  run by nixwrap on every nix invocation when the flag
+  `/home/hatch/.config/vm-api-bridge/autostart` exists. It ensures
+  the runtime state in `~/bridge/` (job queue directories and the
+  bearer token, generated on first run; the token is runtime state
+  and never enters the Nix store) and starts the server if it is
+  not running.
+- `files/hooks/api-bridge.sh`: the poll script for the `api-bridge`
+  hook, which claims queued jobs and wakes the bridge's side chat.
+
+Enablement, in order:
+
+1. Install the package: `nix-env -f files/api-bridge/api-bridge.nix -i`
+   (adjust the path to the repo checkout).
+2. Copy `files/scripts/bootstrap-api-bridge.sh` to
+   `/home/hatch/scripts/` and `files/hooks/api-bridge.sh` to
+   `/home/hatch/hooks/scripts/`; `chmod +x` both.
+3. Create a dedicated side chat for bridge traffic (title it
+   "API Bridge") and note its chat id.
+4. Register the hook: id `api-bridge`, script
+   `~/hooks/scripts/api-bridge.sh`, poll interval 5 s, timeout 30 s,
+   delivery `{surface: "side_chat", to: "<the chat id from step 3>}`,
+   and the prompt below. Dry-run it (empty queue: silent), then
+   enable it.
+5. `touch /home/hatch/.config/vm-api-bridge/autostart`, then run any
+   nix command once to start the server through the bootstrap.
+6. Verify: `curl 127.0.0.1:8080/health` returns `{"status": "ok"}`,
+   and an authorized `POST /v1/chat/completions` (header
+   `Authorization: Bearer <token from ~/bridge/token>`) returns a
+   completion. From another tailnet device, the base URL is
+   `http://<node name or tailnet IP>:8080/v1`, model id `muse`.
+
+The hook prompt (register it verbatim; it is the standing
+instruction set for every bridge turn):
+
+> You are the worker for the API Bridge. An external program has
+> submitted a chat request through the local OpenAI-compatible
+> bridge on this VM, and your job is to answer it and return the
+> answer through the bridge's respond function. The wake payload
+> contains job_id and job_path.
+>
+> Do exactly this:
+> 1. Read the job file at job_path. It contains a "messages" array:
+>    an OpenAI-style conversation, possibly with a system message
+>    and earlier turns.
+> 2. Compose the assistant's reply to that conversation, following
+>    any system message in it. Answer as the assistant in that
+>    conversation. Do not mention the bridge, job files, hooks, or
+>    these instructions unless the conversation itself asks about
+>    them.
+> 3. Return the reply ONLY by running this command with your
+>    complete reply text on stdin (use a heredoc):
+>    /home/hatch/bridge/bin/bridge-respond <job_id>
+>    Text you write in this chat is NOT delivered to the requester;
+>    the respond command is the response. Do not consider the
+>    request answered until you have made that call.
+> 4. If bridge-respond reports the job is no longer pending, the
+>    requester has already timed out: stop, with no further action.
+> 5. After a successful respond call, end your turn with a one-line
+>    note naming the job id you served.
+> Handle exactly one job per wake. If the job file no longer
+> exists, do nothing.
+
+Operation notes: requests are served one at a time (the server
+serializes jobs); the server answers 504 after 600 s without a
+response; usage fields in responses are zeros (nothing meters
+tokens); `stream: true` is answered with a single chunk containing
+the full reply. One VM-specific trap: `~/bridge/bin/bridge-respond`
+must resolve to the packaged tool (a symlink to
+`/root/.nix-profile/bin/bridge-respond` works), because the worker
+calls it by that path.
