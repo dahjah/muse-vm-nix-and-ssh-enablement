@@ -81,6 +81,7 @@ so the node remains registered across reboots without re-login.
 | `SYSTEM_PROMPT.md` | Copy/paste prompt for delegating the installation to Muse |
 | `INSTALL.md` | Step-by-step installation guide followed by Muse |
 | `files/bin/nixwrap` | Wrapper invoked by every `nix`/`tailscale` command |
+| `files/bin/xattr-retry.c` | Source of the xattr-retry preload shim (compiled during setup) |
 | `files/nix/setup-nix.sh` | Full Nix install/reinstall script |
 | `files/hooks/nix-boot-trigger.sh` | Boot recovery poll script |
 | `files/hooks/nix-boot-trigger.json` | Hook registration parameters |

@@ -33,6 +33,7 @@ each script:
 | `files/scripts/bootstrap-tailscale.sh` | `/home/hatch/scripts/bootstrap-tailscale.sh` |
 | `files/hooks/nix-boot-trigger.sh` | `/home/hatch/hooks/scripts/nix-boot-trigger.sh` |
 | `files/nix/setup-nix.sh` | `/home/hatch/workspace/nix/setup-nix.sh` |
+| `files/bin/xattr-retry.c` | `/home/hatch/workspace/nix/xattr-retry.c` |
 
 - Create directories: `~/bin`, `~/scripts`, `~/.config/vm-tailscale`,
   `~/.local/state/tailscale`.
@@ -41,18 +42,22 @@ each script:
   nix-copy-closure nixsh tailscale tailscaled; do ln -sf nixwrap
   /home/hatch/bin/$t; done`
 - Flag: `touch ~/.config/vm-tailscale/autostart`
+- Compile the xattr shim (uses the system gcc):
+  `gcc -shared -fPIC -O2 -o /home/hatch/bin/xattr-retry.so /home/hatch/workspace/nix/xattr-retry.c -ldl`
 
-**Phase C: Nix:** install in the two stages of §4 ("Installing
-packages"). Stage 1 (tmpfs): `sh ~/workspace/nix/setup-nix.sh
-/var/tmp/nixroot`, then `/home/hatch/bin/nix-env -iA
-nixpkgs.hello`. Stage 2 (disk; run it in a fresh session):
-`sh ~/workspace/nix/setup-nix.sh`, then `/home/hatch/bin/nix-env
--iA nixpkgs.hello` and `/home/hatch/bin/nix-env -iA
+**Phase C: Nix:** run
+`LD_PRELOAD=/home/hatch/bin/xattr-retry.so sh ~/workspace/nix/setup-nix.sh`
+(repo: `files/nix/setup-nix.sh`; the preload covers the
+script's own nix calls, which do not go through the wrappers;
+every later nix call gets the shim from nixwrap), then the
+bare installs of §4: `/home/hatch/bin/nix-env -iA
+nixpkgs.hello` and `/home/hatch/bin/nix-env -iA
 nixpkgs.tailscale`. Done when `nix --version` prints 2.35.2
-and both stage-2 installs exit 0. If an install ever fails
-naming a `user.hatch_tainted.<new-suffix>` attribute, append
-that suffix to `ignored-acls` in §4's config (all three
-places it lives) and retry.
+and both installs exit 0. If an install ever fails naming a
+`user.hatch_tainted.<new-suffix>` attribute, append that
+suffix to `ignored-acls` in §4's config (all three places
+it lives) and retry. If the shim is unavailable or
+misbehaves, §4's fallback procedure is the manual path.
 
 **Phase D: boot hook:** register `nix-boot-trigger` exactly as in §6,
 dry-run both marker branches, enable it. Done when the hook log shows one
@@ -118,36 +123,49 @@ builder cannot write the store here.)
 - Store backing on the persistent volume: **`/home/hatch/nixdisk`** (contains `store/` + `var/`), bind-mounted over `/nix` per session (mounts don't persist).
 - Profile lives in the volume (`/nix/var/nix/profiles/default`); the symlink `/root/.nix-profile` and `/etc/nix/nix.conf` live on the ephemeral overlay.
 
-### Installing packages: stage on tmpfs, then disk
+### Installing packages
 
-Install in two stages, the way the reference install was done.
+With the shim in place, installs are plain `nix-env -iA`
+commands, in any order, against a store of any temperature:
 
-Stage 1 (tmpfs): files on tmpfs never acquire the markers, so
-nothing in this stage can fail from them. It proves the
-installer, the channel, and a real package end to end before
-the disk store is involved:
+1. `/home/hatch/bin/nix-env -iA nixpkgs.hello`
+2. `/home/hatch/bin/nix-env -iA nixpkgs.tailscale`
 
-1. `sh ~/workspace/nix/setup-nix.sh /var/tmp/nixroot`
-   installs Nix into a tmpfs-backed store. (nixwrap mounts
-   /var/tmp/nixroot whenever /home/hatch/nixdisk/store does
-   not exist yet; once the disk store exists it mounts that.)
-2. `/home/hatch/bin/nix-env -iA nixpkgs.hello`, and run
-   `hello` to confirm it works.
+The shim: `xattr-retry.so` (source: `files/bin/xattr-retry.c`,
+compiled in Phase B to `/home/hatch/bin/xattr-retry.so`;
+nixwrap preloads it for every tool invocation). Nix lists a
+file's extended attributes by probing the list size and then
+reading into a buffer of that size. The host adds the
+`user.hatch_tainted*` markers to new files one by one, and a
+marker landing between the probe and the read overflows the
+buffer: `error: querying extended attributes of
+"/nix/store/...drv": Numerical result out of range` (§10).
+Instantiation is where it bites: creating a closure lists
+the .drv files being created, about a thousand calls for a
+large package. The shim pads every probe by 256 bytes; the
+whole marker family totals 61 bytes, so the buffer always
+has room for markers that have not landed yet and the read
+succeeds regardless of timing. That makes future installs
+plain commands too, not just the ones in this guide.
 
-Stage 2 (disk): discard the tmpfs store and build the real
-one on the persistent volume. Run this stage in a fresh
-session, so /nix is not already mounted when the script
-binds the disk backing:
+#### Fallback: if the shim is unavailable or broken
 
-1. `sh ~/workspace/nix/setup-nix.sh` (fresh Nix install into
-   /home/hatch/nixdisk; channel added and updated).
-2. `/home/hatch/bin/nix-env -iA nixpkgs.hello`
-3. `/home/hatch/bin/nix-env -iA nixpkgs.tailscale`
-
-Small packages before large ones, in the order listed: on
-the reference install the smaller closures were already in
-the store when tailscale's large closure was attempted, and
-every install was a bare `nix-env -iA`, exactly as above.
+Without the shim, installs avoid the race by ordering
+instead of padding, the procedure the reference install
+used. Stage 1 (tmpfs): files on tmpfs never acquire the
+markers, so this stage proves the toolchain where the race
+cannot occur: `sh ~/workspace/nix/setup-nix.sh
+/var/tmp/nixroot`, then `/home/hatch/bin/nix-env -iA
+nixpkgs.hello` (nixwrap mounts /var/tmp/nixroot whenever
+the disk store does not exist yet). Stage 2 (disk; run it
+in a fresh session): `sh ~/workspace/nix/setup-nix.sh`,
+then `nix-env -iA nixpkgs.hello`, then `nix-env -iA
+nixpkgs.tailscale`. The small closures land first, so the
+large closure is never attempted against a cold store: on
+the reference store, Nix + hello + attr registered 855
+paths in the first minutes, and the tailscale install an
+hour later added 58. The .drv files created before any
+failure persist, so re-running a command resumes from them.
 
 ### The wrapper: `/home/hatch/bin/nixwrap`
 Symlinks in `/home/hatch/bin/` (`nix`, `nix-env`, `nix-shell`, `nix-build`,
@@ -168,10 +186,11 @@ binary and gives up, and nothing retries it until the next manual
 nix invocation.
 6. execs the real tool from `/root/.nix-profile/bin`.
 
-One opt-in experiment is wired in: if
-`/home/hatch/bin/xattr-retry.so` exists, the wrapper preloads
-it for the tool (see §10). It is absent by default, and the
-reference procedure does not use it.
+The wrapper also preloads the xattr-retry shim (§4,
+"Installing packages") for the tool whenever
+`/home/hatch/bin/xattr-retry.so` exists; Phase B compiles it,
+and deleting it disables the shim, in which case the §4
+fallback procedure applies to installs.
 
 Full-reinstall script (fresh VM): **`~/workspace/nix/setup-nix.sh`**: it
 installs Nix itself but does NOT create the symlink farm, install packages,
@@ -329,7 +348,9 @@ is mostly re-running and verifying, in this order:
    required protocols (§2; user only, the agent cannot).
 2. Run any wrapper once, `/home/hatch/bin/nix --version`, and let nixwrap
    self-heal (mount point, nix.conf, profile link). If the store itself is
-   gone, run `~/workspace/nix/setup-nix.sh` first.
+   gone, run `~/workspace/nix/setup-nix.sh` first. Confirm
+   `/home/hatch/bin/xattr-retry.so` exists (recompile per
+   Phase B if not; nixwrap preloads it, §4).
 3. `/home/hatch/bin/nix-env -iA nixpkgs.tailscale` if the
    profile lacks it.
 4. Confirm the hook `nix-boot-trigger` exists and is enabled (definitions
@@ -360,34 +381,18 @@ fails with `error: querying extended attributes of
 "/nix/store/...drv": Numerical result out of range`. Nix
 probes a file's attribute-list size before reading it, and a
 marker landing in between overflows the buffer; Nix does not
-retry. Appending suffixes does not fix this one. The
-reference install never hit it. Where it did appear, on an
-instance pointed cold at a large closure as its first
-install, §4's two stages avoided it: the tmpfs stage proves
-the toolchain where markers cannot interfere, and on disk
-the small closures are registered before the large one is
-attempted. The .drv files created before such a failure
-persist, so re-running the same install command resumes
-instantiation from them rather than starting over.
-
-Experimental, not part of the reference procedure: an
-LD_PRELOAD shim (`files/bin/xattr-retry.c`) that pads
-attribute-list size probes by 256 bytes. The marker family's
-full list totals 61 bytes, so a padded probe cannot
-under-allocate against markers that land after the probe,
-which is the exact overflow behind this failure. Evaluated
-against a live reproduction (a cold instantiation into a
-fresh store root on the marked filesystem, which fails
-unshimmed within the first ~150 paths): with the shim, the
-hello closure instantiated fully (765 paths), a repeat
-unshimmed run failed again, and tailscale's full closure
-instantiated cold in a single pass (2,474 paths). To
-evaluate it on another host: compile with
-`gcc -shared -fPIC -O2 -o /home/hatch/bin/xattr-retry.so /home/hatch/workspace/nix/xattr-retry.c`
-(copy `files/bin/xattr-retry.c` to that source path first);
-nixwrap preloads it for every tool invocation while the .so
-exists. Deleting the .so returns the system to the reference
-behavior exactly.
+retry. Appending suffixes does not fix this one. The default
+defense is the xattr-retry shim (§4), which pads the probe
+by 256 bytes against the family's 61-byte total, so the read
+cannot under-allocate. It was evaluated against a live
+reproduction (cold instantiation into a fresh store root on
+the marked filesystem, which fails unshimmed within the
+first ~150 paths): with the shim, the hello closure
+instantiated fully (765 paths), a repeat unshimmed run
+failed again, and tailscale's full closure instantiated
+cold in a single pass (2,474 paths). If the shim is ever
+unavailable or broken, §4's fallback procedure avoids the
+race by staging and ordering instead.
 
 ## 11. Optional module: API Bridge (OpenAI-compatible endpoint)
 
