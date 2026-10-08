@@ -7,6 +7,18 @@
 set -euo pipefail
 source "$HATCH_HOOK_RUNTIME"
 
+# Cull this hook's runtime log when it grows past 5 MB: the runtime
+# appends one JSON record per poll, idle polls included, which is
+# otherwise unbounded growth. Keeps the newest 2000 lines, rewritten
+# in place so the file keeps its inode.
+CULL_LOG="/home/hatch/hooks/logs/api-bridge.jsonl"
+if [ -f "$CULL_LOG" ] && [ "$(stat -c %s "$CULL_LOG" 2>/dev/null || echo 0)" -gt 5242880 ]; then
+  if tail -n 2000 "$CULL_LOG" > "$CULL_LOG.cull" 2>/dev/null; then
+    cat "$CULL_LOG.cull" > "$CULL_LOG" 2>/dev/null || true
+  fi
+  rm -f "$CULL_LOG.cull"
+fi
+
 INBOX=/home/hatch/bridge/inbox
 OUTBOX=/home/hatch/bridge/outbox
 STATE=/home/hatch/hooks/state/api-bridge

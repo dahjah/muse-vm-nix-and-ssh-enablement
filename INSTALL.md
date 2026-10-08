@@ -286,7 +286,11 @@ then enabling it and confirming in `~/hooks/logs/nix-boot-trigger.jsonl`
 that a live poll bootstraps and subsequent polls are ~20 ms silents.
 House rules learned here: the script must `source "$HATCH_HOOK_RUNTIME"`,
 end with exactly one `silent`/`wake` decision (this one never wakes), and
-guard state writes behind the `HATCH_HOOK_DRY_RUN` check.
+guard state writes behind the `HATCH_HOOK_DRY_RUN` check. Both hook
+scripts (this one and the bridge's, §11) also trim the runtime log the
+platform keeps for them at `~/hooks/logs/<hook>.jsonl`: the runtime
+appends a record for every poll, idle ones included, so each script
+rewrites its own log to the newest 2000 lines whenever it passes 5 MB.
 
 
 ## 7. Tailscale
@@ -513,7 +517,10 @@ tokens); `stream: true` is answered with a single chunk containing
 the full reply. One VM-specific trap: `~/bridge/bin/bridge-respond`
 must resolve to the packaged tool (a symlink to
 `/root/.nix-profile/bin/bridge-respond` works), because the worker
-calls it by that path.
+calls it by that path. The running server's log is
+`~/.local/state/api-bridge/server.log`, with `server.pid` and
+`bootstrap.log` beside it; `~/bridge/` itself holds only keys and
+job queues, no logs.
 
 ### API keys
 
