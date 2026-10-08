@@ -42,7 +42,13 @@ each script:
   nix-copy-closure nixsh tailscale tailscaled; do ln -sf nixwrap
   /home/hatch/bin/$t; done`
 - Flag: `touch ~/.config/vm-tailscale/autostart`
-- Compile the xattr shim (uses the system gcc):
+- Fetch the prebuilt xattr shim. CI builds it from
+  `files/bin/xattr-retry.c` on each `shim-v*` tag and publishes
+  it as a release asset, so no compiled binary is committed to
+  this repo:
+  `cd /home/hatch/bin && curl -fsSLO https://github.com/dahjah/muse-vm-nix-and-ssh-enablement/releases/download/shim-v1/xattr-retry.so && curl -fsSLO https://github.com/dahjah/muse-vm-nix-and-ssh-enablement/releases/download/shim-v1/xattr-retry.so.sha256 && sha256sum -c xattr-retry.so.sha256 && rm xattr-retry.so.sha256`
+  Fallback (a different architecture, or the asset is
+  unreachable): compile from source with the system gcc:
   `gcc -shared -fPIC -O2 -o /home/hatch/bin/xattr-retry.so /home/hatch/workspace/nix/xattr-retry.c -ldl`
 
 **Phase C: Nix:** run
@@ -131,9 +137,10 @@ commands, in any order, against a store of any temperature:
 1. `/home/hatch/bin/nix-env -iA nixpkgs.hello`
 2. `/home/hatch/bin/nix-env -iA nixpkgs.tailscale`
 
-The shim: `xattr-retry.so` (source: `files/bin/xattr-retry.c`,
-compiled in Phase B to `/home/hatch/bin/xattr-retry.so`;
-nixwrap preloads it for every tool invocation). Nix lists a
+The shim: `xattr-retry.so` (source: `files/bin/xattr-retry.c`;
+Phase B fetches the CI-built release asset to
+`/home/hatch/bin/xattr-retry.so`; nixwrap preloads it for
+every tool invocation). Nix lists a
 file's extended attributes by probing the list size and then
 reading into a buffer of that size. The host adds the
 `user.hatch_tainted*` markers to new files one by one, and a
@@ -349,7 +356,7 @@ is mostly re-running and verifying, in this order:
 2. Run any wrapper once, `/home/hatch/bin/nix --version`, and let nixwrap
    self-heal (mount point, nix.conf, profile link). If the store itself is
    gone, run `~/workspace/nix/setup-nix.sh` first. Confirm
-   `/home/hatch/bin/xattr-retry.so` exists (recompile per
+   `/home/hatch/bin/xattr-retry.so` exists (refetch per
    Phase B if not; nixwrap preloads it, §4).
 3. `/home/hatch/bin/nix-env -iA nixpkgs.tailscale` if the
    profile lacks it.
