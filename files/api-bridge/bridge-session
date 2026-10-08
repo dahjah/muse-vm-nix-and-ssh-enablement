@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""Session tools for the Muse API Bridge agent.
+
+One file, three commands, dispatched on the name it is called by:
+
+  bridge-reply <job-id>   The answer for the session's current
+                          request goes on stdin: either plain text
+                          (the final answer; ends the session) or a
+                          JSON envelope {"tool_calls": [{"name": ...,
+                          "arguments": {...}}]} asking the client to
+                          run tools (the session stays live).
+  bridge-next <job-id>    Wait for the client's next request in this
+                          session and print it as JSON. Exit 3 when
+                          none arrived yet (call again), exit 4 when
+                          the session is over.
+  bridge-close <job-id>   End the session now.
+
+The session's secret and the server's port are read from
+~/bridge/sessions/<job-id>.session (mode 600, written by the server
+when the job was queued); the secret never leaves this machine.
+"""
+import json
+import os
+import sys
+import urllib.request
+import urllib.error
+from urllib.parse import quote
+
+BASE = os.path.expanduser("~/bridge")
+SESSIONS_DIR = os.path.join(BASE, "sessions")
+
+
+def fail(msg, code):
+    print("bridge-session: %s" % msg, file=sys.stderr)
+    sys.exit(code)
+
+
+def load_session(job_id):
+    path = os.path.join(SESSIONS_DIR, job_id + ".session")
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data["secret"], int(data["port"])
+    except (OSError, ValueError, KeyError):
+        fail("no live session for job %s (missing %s); "
+             "answer one-shot with bridge-respond instead" % (job_id, path), 5)
+
+
+def call(port, method, path, secret, payload=None, timeout=30):
+    url = "http://127.0.0.1:%d%s" % (port, path)
+    data = None
+    headers = {}
+    if payload is not None:
+        data = json.dumps(payload).encode()
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers,
+                                 method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, json.loads(resp.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read() or b"{}")
+        except ValueError:
+            return e.code, {}
+    except (urllib.error.URLError, OSError) as e:
+        fail("cannot reach the bridge server: %s" % e, 5)
+
+
+def valid_envelope(payload):
+    try:
+        obj = json.loads(payload)
+    except ValueError:
+        return False
+    if not isinstance(obj, dict):
+        return False
+    calls = obj.get("tool_calls")
+    if not isinstance(calls, list) or not calls:
+        return False
+    for c in calls:
+        if not isinstance(c, dict):
+            return False
+        if not isinstance(c.get("name"), str) or not c.get("name"):
+            return False
+        if not isinstance(c.get("arguments"), (dict, str)):
+            return False
+    return True
+
+
+def main():
+    prog = os.path.basename(sys.argv[0])
+    if len(sys.argv) != 2:
+        fail("usage: %s <job-id>" % prog, 2)
+    job_id = sys.argv[1]
+    if not job_id or any(c not in "0123456789abcdef" for c in job_id):
+        fail("bad or missing job id", 2)
+    secret, port = load_session(job_id)
+    base = "/session/%s" % job_id
+
+    if prog == "bridge-reply":
+        payload = sys.stdin.read()
+        if payload.strip().startswith("{") and not valid_envelope(payload):
+            fail("payload looks like a tool_calls envelope but is "
+                 "malformed; fix the JSON and resend, or send plain "
+                 "text for a final answer", 2)
+        status, resp = call(port, "POST", base + "/reply", secret,
+                            {"secret": secret, "reply": payload})
+        if status == 200:
+            print("bridge-reply: delivered (session %s)"
+                  % resp.get("session", "closed"))
+            return
+        if status == 409:
+            fail("the server has no pending request for this session; "
+                 "if you were answering a follow-up, fetch it with "
+                 "bridge-next first", 5)
+        fail("server refused the reply (HTTP %d); the session may be "
+             "over, answer one-shot with bridge-respond if a job file "
+             "is still pending" % status, 5)
+
+    if prog == "bridge-next":
+        status, resp = call(port, "GET",
+                            base + "/next?secret=" + quote(secret),
+                            secret, timeout=140)
+        if status == 200 and resp.get("status") == "request":
+            print(json.dumps(resp["request"]))
+            return
+        if status == 200 and resp.get("status") == "none":
+            fail("no request yet", 3)
+        if status == 410:
+            fail("the session is over", 4)
+        if status == 409:
+            fail("the session has not started; answer the first "
+                 "request with bridge-reply first", 4)
+        fail("unexpected server response (HTTP %d)" % status, 5)
+
+    if prog == "bridge-close":
+        status, resp = call(port, "POST", base + "/close", secret,
+                            {"secret": secret})
+        if status in (200, 404, 410):
+            print("bridge-close: session closed")
+            return
+        fail("unexpected server response (HTTP %d)" % status, 5)
+
+    fail("called by an unknown name (%s); expected bridge-reply, "
+         "bridge-next, or bridge-close" % prog, 2)
+
+
+if __name__ == "__main__":
+    main()

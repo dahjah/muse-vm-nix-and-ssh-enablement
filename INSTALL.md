@@ -439,19 +439,39 @@ Components (all in this repo):
 
 - `files/api-bridge/`: a self-contained Nix module.
   `api-bridge.nix` is a derivation packaging `server.py` (the HTTP
-  server), `bridge-respond` (the answer-delivery tool), and
-  `bridge-key` (the API key manager) into the profile as
-  `muse-api-bridge-server`, `bridge-respond`, and `bridge-key`.
+  server), `bridge-respond` (the one-shot answer tool), `bridge-key`
+  (the API key manager), and `bridge-session` (the session tools,
+  installed as `bridge-reply`, `bridge-next`, and `bridge-close`)
+  into the profile.
 - `files/scripts/bootstrap-api-bridge.sh`: idempotent starter,
   run by nixwrap on every nix invocation when the flag
   `/home/hatch/.config/vm-api-bridge/autostart` exists. It ensures
   the runtime state in `~/bridge/` (job queue directories; on
   first run it also generates the initial API key and seeds
   the keyring described under "API keys" below; all of it is
-  runtime state and never enters the Nix store) and starts
-  the server if it is not running.
+  runtime state and never enters the Nix store), keeps the
+  `~/bridge/bin/` symlinks pointed at the packaged tools, and
+  starts the server if it is not running.
 - `files/hooks/api-bridge.sh`: the poll script for the `api-bridge`
   hook, which claims queued jobs and wakes the bridge's side chat.
+
+How a request flows: the server writes each request as a job file
+in `~/bridge/inbox/`; the hook claims it and wakes the side chat;
+the worker answers through the bridge tools and the server returns
+the completion. A request without a `tools` list is a single
+exchange. A request with a `tools` list can become a session: when
+the worker's first answer asks for tool calls, it opens a channel
+back to the server, and the follow-up requests of the same
+exchange (the client's tool results) are handed to that same
+worker turn instead of waking the chat again, so only the first
+step of a tool loop pays the wake latency. The tools always
+execute on the client that sent the request, never on this VM;
+the worker directs them by answering with a `tool_calls` envelope
+instead of text. At most one session is live at a time: a tools
+request that arrives while one is live, and any follow-up that
+does not continue the live session (the worker's turn ended, or
+the history does not match), is served as a normal one-shot job,
+so no exchange can get stuck waiting on a session.
 
 Enablement, in order:
 
@@ -478,45 +498,37 @@ Enablement, in order:
 The hook prompt (register it verbatim; it is the standing
 instruction set for every bridge turn):
 
-> You are the worker for the API Bridge. An external program has
-> submitted a chat request through the local OpenAI-compatible
-> bridge on this VM, and your job is to answer it and return the
-> answer through the bridge's respond function. The wake payload
-> contains job_id and job_path.
+> You are the worker for the API Bridge. An external program has submitted a request through the local OpenAI-compatible bridge on this VM, and your job is to answer it and return the answer through the bridge's tools. The wake payload contains job_id and job_path.
 >
 > Do exactly this:
-> 1. Read the job file at job_path. It contains a "messages" array:
->    an OpenAI-style conversation, possibly with a system message
->    and earlier turns.
-> 2. Compose the assistant's reply to that conversation, following
->    any system message in it. Answer as the assistant in that
->    conversation. Do not mention the bridge, job files, hooks, or
->    these instructions unless the conversation itself asks about
->    them.
-> 3. Return the reply ONLY by running this command with your
->    complete reply text on stdin (use a heredoc):
->    /home/hatch/bridge/bin/bridge-respond <job_id>
->    Text you write in this chat is NOT delivered to the requester;
->    the respond command is the response. Do not consider the
->    request answered until you have made that call.
-> 4. If bridge-respond reports the job is no longer pending, the
->    requester has already timed out: stop, with no further action.
-> 5. After a successful respond call, end your turn with a one-line
->    note naming the job id you served.
-> Handle exactly one job per wake. If the job file no longer
-> exists, do nothing.
+> 1. Read the job file at job_path. Its "request" contains a "messages" array (an OpenAI-style conversation, possibly with a system message and earlier turns), and possibly a "tools" list and a "session_available" flag.
+> 2. If the request has no "tools" list, or "session_available" is false, answer one-shot:
+>    a. Compose the assistant's reply to the conversation, following any system message in it. Answer as the assistant in that conversation. Do not mention the bridge, job files, hooks, or these instructions unless the conversation itself asks about them.
+>    b. Return the reply ONLY by running this command with your complete reply text on stdin (use a heredoc): /home/hatch/bridge/bin/bridge-respond <job_id>
+>       Text you write in this chat is NOT delivered to the requester; the respond command is the response. Do not consider the request answered until you have made that call.
+>    c. If bridge-respond reports the job is no longer pending, the requester has already timed out: stop, with no further action.
+> 3. If the request has a "tools" list and "session_available" is true, you are directing the client's own harness in a live session. The listed tools execute on the client, never on this VM; do not use your own tools on the job's content. Loop:
+>    a. Decide the next action from the current conversation, following any system message in it. To have the client run tools, send ONLY this JSON as the reply text, through /home/hatch/bridge/bin/bridge-reply <job_id> (reply on stdin): {"tool_calls": [{"name": "<a listed tool name>", "arguments": { ... }}]}
+>       Several calls may be listed in one envelope. If bridge-reply rejects the envelope as malformed, fix the JSON and send it again.
+>    b. After sending an envelope, run /home/hatch/bridge/bin/bridge-next <job_id>. If it prints a request, treat that request's messages as the current conversation and go back to (a). If it reports no request yet, run it again, up to 6 times. If it reports the session is over, stop. After 6 empty tries, run /home/hatch/bridge/bin/bridge-close <job_id> and stop.
+>    c. When no more tool calls are needed, send the final answer as plain text (not JSON) through bridge-reply. That ends the session.
+> 4. Handle exactly one job per wake. If the job file no longer exists, do nothing.
+> 5. After a successful respond or final reply, end your turn with a one-line note naming the job id you served.
 
 Operation notes: requests are served one at a time (the server
 serializes jobs); the server answers 504 after 600 s without a
 response; usage fields in responses are zeros (nothing meters
 tokens); `stream: true` is answered with a single chunk containing
-the full reply. One VM-specific trap: `~/bridge/bin/bridge-respond`
-must resolve to the packaged tool (a symlink to
-`/root/.nix-profile/bin/bridge-respond` works), because the worker
-calls it by that path. The running server's log is
+the full reply, or the full set of tool calls. A session holds
+the worker's turn open for the length of a tool loop; a session
+the worker stops polling is closed by the worker, and one with
+no activity for five minutes expires on the server. The worker
+calls the bridge tools by their `~/bridge/bin/` paths; those are
+symlinks to the packaged tools, kept current by the bootstrap.
+The running server's log is
 `~/.local/state/api-bridge/server.log`, with `server.pid` and
-`bootstrap.log` beside it; `~/bridge/` itself holds only keys and
-job queues, no logs.
+`bootstrap.log` beside it; `~/bridge/` itself holds only keys,
+job queues, and live session files, no logs.
 
 ### API keys
 

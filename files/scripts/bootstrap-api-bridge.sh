@@ -7,9 +7,18 @@
 STATE=/home/hatch/.local/state/api-bridge
 BRIDGE_HOME=/home/hatch/bridge
 BIN=/root/.nix-profile/bin/muse-api-bridge-server
-mkdir -p "$STATE" "$BRIDGE_HOME/inbox" "$BRIDGE_HOME/outbox"
+mkdir -p "$STATE" "$BRIDGE_HOME/inbox" "$BRIDGE_HOME/outbox" "$BRIDGE_HOME/bin"
 LOG="$STATE/bootstrap.log"
 ts() { date -Iseconds; }
+
+# The agent calls the bridge tools by their ~/bridge/bin paths; keep
+# those symlinks pointed at the packaged tools (a package upgrade
+# that adds a tool then needs no manual step).
+for tool in bridge-respond bridge-key bridge-reply bridge-next bridge-close; do
+  if [ -e "/root/.nix-profile/bin/$tool" ]; then
+    ln -sf "/root/.nix-profile/bin/$tool" "$BRIDGE_HOME/bin/$tool"
+  fi
+done
 
 # The bearer token is runtime state, never part of the nix package
 # (the store is world-readable). Generate one on first run.
