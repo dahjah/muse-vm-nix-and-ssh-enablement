@@ -417,11 +417,11 @@ defense is the xattr-retry shim (§4), which pads the probe
 by 256 bytes against the family's 61-byte total, so the read
 cannot under-allocate. It was evaluated against a live
 reproduction (cold instantiation into a fresh store root on
-the marked filesystem, which fails unshimmed within the
-first ~150 paths): with the shim, the hello closure
-instantiated fully (765 paths), a repeat unshimmed run
-failed again, and tailscale's full closure instantiated
-cold in a single pass (2,474 paths). If the shim is ever
+the marked filesystem): unshimmed attempts failed within
+the first ~150 paths, with the shim the same 765-path
+closure instantiated fully, a repeat unshimmed run failed
+again, and tailscale's full closure instantiated cold in a
+single pass (2,474 paths). If the shim is ever
 unavailable or broken, §4's fallback procedure stages the
 install on tmpfs first and relies on .drv persistence to
 resume the disk install across retries.
