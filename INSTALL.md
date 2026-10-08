@@ -168,6 +168,11 @@ binary and gives up, and nothing retries it until the next manual
 nix invocation.
 6. execs the real tool from `/root/.nix-profile/bin`.
 
+One opt-in experiment is wired in: if
+`/home/hatch/bin/xattr-retry.so` exists, the wrapper preloads
+it for the tool (see §10). It is absent by default, and the
+reference procedure does not use it.
+
 Full-reinstall script (fresh VM): **`~/workspace/nix/setup-nix.sh`**: it
 installs Nix itself but does NOT create the symlink farm, install packages,
 or lay down any scripts; on a fresh instance follow §0 Phase B/C for those.
@@ -364,6 +369,19 @@ the small closures are registered before the large one is
 attempted. The .drv files created before such a failure
 persist, so re-running the same install command resumes
 instantiation from them rather than starting over.
+
+Experimental, not part of the reference procedure: an
+LD_PRELOAD shim (`files/bin/xattr-retry.c`) that pads
+attribute-list size probes by 256 bytes. The marker family's
+full list totals 61 bytes, so a padded probe cannot
+under-allocate against markers that land after the probe,
+which is the exact overflow behind this failure. To evaluate
+it: compile with
+`gcc -shared -fPIC -O2 -o /home/hatch/bin/xattr-retry.so /home/hatch/workspace/nix/xattr-retry.c`
+(copy `files/bin/xattr-retry.c` to that source path first);
+nixwrap preloads it for every tool invocation while the .so
+exists. Deleting the .so returns the system to the reference
+behavior exactly.
 
 ## 11. Optional module: API Bridge (OpenAI-compatible endpoint)
 
