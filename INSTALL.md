@@ -46,7 +46,7 @@ each script:
 **Phase C: Nix:** run `sh ~/workspace/nix/setup-nix.sh` (repo:
 `files/nix/setup-nix.sh`), then install the packages with the
 settle-aware installer:
-`sh ~/workspace/nix/nix-install-settled.sh tailscale hello`
+`sh ~/workspace/nix/nix-install-settled.sh hello tailscale`
 (§4, "Installing packages", explains why a bare `nix-env -iA`
 can fail on this machine). Done when `nix --version` prints
 2.35.2 and the installer exits 0 for both packages. If an install
@@ -130,15 +130,32 @@ does not retry. `ignored-acls` cannot help here: it applies
 after the list has been read. (A different failure from the
 "removing extended attribute" one above; §10 covers both.)
 
+The vulnerable step is instantiation itself: creating a large
+package's .drv closure (stdenv's bootstrap chain plus the
+package's dependency tree) writes thousands of files in a
+burst, and the run dies partway, on a different fresh .drv
+each time. Retrying the install command does not converge on
+its own within a few attempts, because each attempt only
+resumes that same interrupted instantiation. What works is
+resuming instantiation until the full closure exists: .drv
+files persist between runs, so progress compounds.
+
 So never install with a bare `nix-env -iA`. Use
 `nix-install-settled.sh` (repo: `files/nix/`, copied to
 `~/workspace/nix/` in Phase B), which for each package:
-instantiates it first (creating the .drv files), waits until
-the store's total attribute count is unchanged across two
-sweeps a few seconds apart, then installs, retrying the whole
-sequence up to 5 times per package:
+resumes instantiation until it completes (bounded at 50
+attempts), waits until the store's total attribute count is
+unchanged across two sweeps a few seconds apart, then
+installs, retrying the install up to 5 times:
 
-`sh ~/workspace/nix/nix-install-settled.sh tailscale hello`
+`sh ~/workspace/nix/nix-install-settled.sh hello tailscale`
+
+Install small packages first on a fresh store (hello before
+tailscale): the manual install this guide was written from
+had effectively warmed the store with smaller installs
+before attempting the large closure, and a cold store pointed
+straight at the largest closure is the worst case for this
+race.
 
 ### The wrapper: `/home/hatch/bin/nixwrap`
 Symlinks in `/home/hatch/bin/` (`nix`, `nix-env`, `nix-shell`, `nix-build`,
@@ -348,8 +365,9 @@ adds the markers to a new file one by one, and Nix probes the
 attribute-list size before reading it, so a marker landing in
 between overflows the buffer; Nix does not retry. Appending
 suffixes does not fix this one. Use the settle-aware installer
-in §4, which instantiates first, waits for the store's
-attribute count to stabilize, and only then installs.
+in §4, which resumes instantiation until the package's full
+.drv closure exists, waits for the store's attribute count
+to stabilize, and only then installs.
 
 ## 11. Optional module: API Bridge (OpenAI-compatible endpoint)
 
