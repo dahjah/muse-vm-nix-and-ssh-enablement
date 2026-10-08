@@ -125,30 +125,89 @@ the account's existing policy. SSH access to the VM works in
 either configuration; the policy only controls what the VM can
 initiate.
 
-To apply it, the user performs the following in the Tailscale
-admin console:
+To apply it, the user works in the Tailscale admin console,
+under **Access Controls** (the policy editor). Which path to
+take depends on the state of the existing policy. The
+complete example policy is
+[files/tailscale/policy.jsonc](files/tailscale/policy.jsonc).
 
-1. Open the admin console and go to **Access Controls**, the policy
-   editor.
-2. Replace the policy with the contents of
-   [files/tailscale/policy.jsonc](files/tailscale/policy.jsonc).
-   The policy defines `tag:muse`, grants every tailnet member the
-   right to apply it (`tagOwners`), gives the owner's devices
-   allow-all access, and adds an SSH rule for the tagged VM.
-3. In the `tests` section, replace `your-own-login@example.com`
-   with your own Tailscale login.
-4. If the tailnet has other tagged devices that must keep normal
-   access, add their tags to the `src` list of the allow-all rule,
-   as the comments in the file describe. A tag that appears as a
-   source in no rule can initiate nothing, which is the intent for
-   `tag:muse` but will silently lock out any other tag that is
-   forgotten. Do not add `tag:muse` as a source.
-5. Save. Tailscale evaluates the policy's `tests` on save and
-   refuses to save if any check fails.
-6. Tell Muse the policy is saved, ideally before approving the
-   VM's login link. Muse then joins the VM with
-   `--advertise-tags=tag:muse` so the policy applies to it from the
-   start.
+**If the existing policy is the untouched Tailscale default**
+(or contains nothing worth keeping), it can be replaced
+wholesale with the contents of that file. Then replace
+`your-own-login@example.com` in its `tests` section with your
+own Tailscale login, and heed the warning about other tags
+below before saving.
+
+**If the existing policy has rules that matter, merge
+instead.** Merging only adds entries; nothing existing is
+removed or changed, so every device keeps the access it has
+now. Four additions, all taken from the example file:
+
+1. In `tagOwners`, add the entry
+   `"tag:muse": ["autogroup:member"]`.
+2. In `acls`, confirm an accept rule lets members reach the
+   VM. The untouched default already contains exactly this
+   rule, in which case nothing needs adding:
+
+   ```jsonc
+   {
+       "action": "accept",
+       "src":    ["autogroup:member"],
+       "dst":    ["*:*"],
+   },
+   ```
+
+   If the policy is more restrictive, append this narrower
+   entry to the `acls` array instead, which grants members
+   access to the VM and nothing else:
+
+   ```jsonc
+   {
+       "action": "accept",
+       "src":    ["autogroup:member"],
+       "dst":    ["tag:muse:*"],
+   },
+   ```
+
+   The property that must hold either way, and the whole
+   mechanism of the policy: `tag:muse` appears as a source
+   in no rule anywhere.
+3. Append this entry to the `ssh` array:
+
+   ```jsonc
+   {
+       "action": "accept",
+       "src":    ["autogroup:member"],
+       "dst":    ["tag:muse"],
+       "users":  ["autogroup:nonroot", "root"],
+   },
+   ```
+
+   The example file's second SSH rule (the `autogroup:self`
+   check rule) is part of the default policy already; add it
+   only if it is missing.
+4. Append the two entries from the file's `tests` array to
+   the policy's `tests` (creating the array if it has none),
+   replacing `your-own-login@example.com` with your own
+   Tailscale login.
+
+Either way, finish with:
+
+5. Save. Tailscale evaluates the policy's `tests` on save
+   and refuses to save if any check fails.
+6. Tell Muse the policy is saved, ideally before approving
+   the VM's login link. Muse then joins the VM with
+   `--advertise-tags=tag:muse` so the policy applies to it
+   from the start.
+
+Warning, for the wholesale path only: if the tailnet has
+other tagged devices, a replaced policy leaves their tags as
+a source in no rule, and a tag that appears as a source in
+no rule can initiate nothing, so they are silently locked
+out unless their tags are added to the `src` list of the
+allow-all rule, as the comments in the file describe. Do not
+add `tag:muse` as a source. Merging does not have this
+problem, because it removes nothing.
 
 ## Requirements
 

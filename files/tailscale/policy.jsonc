@@ -1,4 +1,11 @@
 {
+	// COMPLETE EXAMPLE POLICY, for a tailnet starting from the
+	// default policy or an empty one. If your tailnet already
+	// has a policy with rules you rely on, do NOT paste this
+	// over it: replacing discards your existing rules. Merge
+	// the pieces instead; the README's Security section lists
+	// exactly what to add, and where.
+	//
 	// tag:muse handling only. Tailscale blocks anything not explicitly
 	// allowed below, and tag:muse is not a source in ANY rule, that
 	// absence is the entire "no outbound" mechanism.

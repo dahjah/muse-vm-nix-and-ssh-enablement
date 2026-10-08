@@ -345,12 +345,14 @@ guard state writes behind the `HATCH_HOOK_DRY_RUN` check.
   everything else) freely. An `ssh` rule covers Tailscale SSH into
   the tagged node (ACLs alone don't govern it), and the policy's
   `tests` section locks both halves in, Tailscale refuses to save the
-  policy if a future edit breaks them. The complete policy is
-  `files/tailscale/policy.jsonc`
-  in this repo; its contents go in the Tailscale admin console's
-  policy editor, replacing what is there. (The user's
-  step-by-step for applying it is in the README's Security
-  section.)
+  policy if a future edit breaks them. The complete example
+  policy is `files/tailscale/policy.jsonc` in this repo. It
+  is applied in the Tailscale admin console's policy editor:
+  as a wholesale replacement only when the existing policy is
+  the untouched default, and otherwise by merging the
+  fragments it is made of, so an existing policy's rules are
+  never discarded. (The user's step-by-step for both paths
+  is in the README's Security section.)
 
 
 ## 8. Expected end state (example values; yours will differ)
