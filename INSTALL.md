@@ -33,6 +33,7 @@ each script:
 | `files/scripts/bootstrap-tailscale.sh` | `/home/hatch/scripts/bootstrap-tailscale.sh` |
 | `files/hooks/nix-boot-trigger.sh` | `/home/hatch/hooks/scripts/nix-boot-trigger.sh` |
 | `files/nix/setup-nix.sh` | `/home/hatch/workspace/nix/setup-nix.sh` |
+| `files/nix/nix-install-settled.sh` | `/home/hatch/workspace/nix/nix-install-settled.sh` |
 
 - Create directories: `~/bin`, `~/scripts`, `~/.config/vm-tailscale`,
   `~/.local/state/tailscale`.
@@ -43,12 +44,15 @@ each script:
 - Flag: `touch ~/.config/vm-tailscale/autostart`
 
 **Phase C: Nix:** run `sh ~/workspace/nix/setup-nix.sh` (repo:
-`files/nix/setup-nix.sh`), then
-`/home/hatch/bin/nix-env -iA nixpkgs.tailscale`. Done when
-`nix --version` prints 2.35.2 and a real store operation (e.g.
-`nix-env -iA nixpkgs.hello`) succeeds. If an install ever fails naming a
-`user.hatch_tainted.<new-suffix>` attribute, append that suffix to
-`ignored-acls` in §4's config (all three places it lives) and retry.
+`files/nix/setup-nix.sh`), then install the packages with the
+settle-aware installer:
+`sh ~/workspace/nix/nix-install-settled.sh tailscale hello`
+(§4, "Installing packages", explains why a bare `nix-env -iA`
+can fail on this machine). Done when `nix --version` prints
+2.35.2 and the installer exits 0 for both packages. If an install
+ever fails naming a `user.hatch_tainted.<new-suffix>` attribute,
+append that suffix to `ignored-acls` in §4's config (all three
+places it lives) and retry.
 
 **Phase D: boot hook:** register `nix-boot-trigger` exactly as in §6,
 dry-run both marker branches, enable it. Done when the hook log shows one
@@ -113,6 +117,28 @@ builder cannot write the store here.)
 - Nix **2.35.2**, official installer, single-user. Channel: nixpkgs-unstable.
 - Store backing on the persistent volume: **`/home/hatch/nixdisk`** (contains `store/` + `var/`), bind-mounted over `/nix` per session (mounts don't persist).
 - Profile lives in the volume (`/nix/var/nix/profiles/default`); the symlink `/root/.nix-profile` and `/etc/nix/nix.conf` live on the ephemeral overlay.
+
+### Installing packages: let the markers settle first
+
+The markers do not land atomically: the host adds them to a new
+file one by one over a short window. Nix lists a file's
+attributes by probing the list size and then reading into a
+buffer of that size; a marker landing between the two calls
+fails the read with `error: querying extended attributes of
+"/nix/store/...drv": Numerical result out of range`, and Nix
+does not retry. `ignored-acls` cannot help here: it applies
+after the list has been read. (A different failure from the
+"removing extended attribute" one above; §10 covers both.)
+
+So never install with a bare `nix-env -iA`. Use
+`nix-install-settled.sh` (repo: `files/nix/`, copied to
+`~/workspace/nix/` in Phase B), which for each package:
+instantiates it first (creating the .drv files), waits until
+the store's total attribute count is unchanged across two
+sweeps a few seconds apart, then installs, retrying the whole
+sequence up to 5 times per package:
+
+`sh ~/workspace/nix/nix-install-settled.sh tailscale hello`
 
 ### The wrapper: `/home/hatch/bin/nixwrap`
 Symlinks in `/home/hatch/bin/` (`nix`, `nix-env`, `nix-shell`, `nix-build`,
@@ -290,7 +316,8 @@ is mostly re-running and verifying, in this order:
 2. Run any wrapper once, `/home/hatch/bin/nix --version`, and let nixwrap
    self-heal (mount point, nix.conf, profile link). If the store itself is
    gone, run `~/workspace/nix/setup-nix.sh` first.
-3. `nix-env -iA nixpkgs.tailscale` if the profile lacks it.
+3. `sh ~/workspace/nix/nix-install-settled.sh tailscale` if the
+   profile lacks it (§4).
 4. Confirm the hook `nix-boot-trigger` exists and is enabled (definitions
    are runtime-saved; recreate from §6 + `files/hooks/` if missing).
 5. tailscaled autostarts via its flag (§7); if the node shows
@@ -306,13 +333,23 @@ is mostly re-running and verifying, in this order:
    exists and the server answers `curl 127.0.0.1:8080/health` after
    the first nix call of the boot.
 
-## 10. Known quirk: taint-marker suffixes
+## 10. Known quirks: taint markers
 
 The suffix variants in `ignored-acls` may gain new forms on future
 boots (two variants have been seen: `.n` and `.u`). If an
 install ever fails naming a `user.hatch_tainted.<new-suffix>`
 attribute, append that exact suffix to `ignored-acls` in all three
 places it lives (§4) and retry.
+
+A second, distinct failure from the same markers: an install
+fails with `error: querying extended attributes of
+"/nix/store/...drv": Numerical result out of range`. The host
+adds the markers to a new file one by one, and Nix probes the
+attribute-list size before reading it, so a marker landing in
+between overflows the buffer; Nix does not retry. Appending
+suffixes does not fix this one. Use the settle-aware installer
+in §4, which instantiates first, waits for the store's
+attribute count to stabilize, and only then installs.
 
 ## 11. Optional module: API Bridge (OpenAI-compatible endpoint)
 
