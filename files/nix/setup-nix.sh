@@ -12,14 +12,18 @@
 # Also: root single-user install needs the sandbox off (see /etc/nix/nix.conf).
 set -e
 
-mkdir -p /home/hatch/nixdisk /nix /etc/nix
+# Backing directory for the store: default is the persistent disk
+# volume. Pass /var/tmp/nixroot for the tmpfs stage (INSTALL.md
+# section 4, "Installing packages").
+BACKING=${1:-/home/hatch/nixdisk}
+mkdir -p "$BACKING" /nix /etc/nix
 cat > /etc/nix/nix.conf <<'CONF'
 sandbox = false
 build-users-group =
 experimental-features = nix-command flakes
 ignored-acls = security.csm security.selinux system.nfs4_acl security.tamper_marker user.hatch_tainted user.hatch_tainted.n user.hatch_tainted.u
 CONF
-mountpoint -q /nix || mount --bind /home/hatch/nixdisk /nix
+mountpoint -q /nix || mount --bind "$BACKING" /nix
 
 curl -fsSL https://nixos.org/nix/install -o /tmp/nix-install.sh
 sh /tmp/nix-install.sh --no-daemon --yes || true

@@ -47,15 +47,6 @@ if [ -f /home/hatch/.config/vm-api-bridge/autostart ]; then
   /home/hatch/scripts/bootstrap-api-bridge.sh >/dev/null 2>&1 || true
 fi
 export PATH="/root/.nix-profile/bin:$PATH"
-
-# xattr-retry shim: pads extended-attribute list size probes so
-# the host's asynchronous taint-marking cannot overflow Nix's
-# read buffer mid-listing (INSTALL.md section 4). Preloaded for
-# the real tool only; absent file = no preload.
-if [ -f /home/hatch/bin/xattr-retry.so ]; then
-  LD_PRELOAD="/home/hatch/bin/xattr-retry.so${LD_PRELOAD:+:$LD_PRELOAD}"
-  export LD_PRELOAD
-fi
 tool=$(basename "$0")
 if [ "$tool" = "nixwrap" ] || [ "$tool" = "nixsh" ]; then
   if [ $# -gt 0 ]; then exec bash -c "$1"; else exec bash; fi
