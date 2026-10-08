@@ -221,9 +221,6 @@ wrapper warns and the §4 fallback procedure applies.
 Full-reinstall script (fresh VM): **`~/workspace/nix/setup-nix.sh`**: it
 installs Nix itself but does NOT create the symlink farm, install packages,
 or lay down any scripts; on a fresh instance follow §0 Phase B/C for those.
-Installed via nix so far: hello, attr 2.6.0, cowsay, fd 10.5.0,
-tailscale 1.102.5, and the §11 bridge package (nix itself, 2.35.2,
-came with the installer).
 
 ## 5. Why not systemd (persistence investigation)
 
@@ -366,8 +363,7 @@ rewrites its own log to the newest 2000 lines whenever it passes 5 MB.
 A finished setup looks like this (example node name and address shown;
 expect the same *shape*, not the same values):
 
-- Nix 2.35.2 working; hello, attr, cowsay, and tailscale installed in
-  the profile.
+- Nix 2.35.2 working; hello and tailscale installed in the profile.
 - Hook `nix-boot-trigger` enabled, polling every 5 s; marker present.
 - tailscaled running with autostart enabled (§7); node online, Health
   `[]` (no DERP or ACL warnings).
