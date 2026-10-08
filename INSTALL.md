@@ -172,22 +172,20 @@ plain commands too, not just the ones in this guide.
 
 #### Fallback: if the shim is unavailable or broken
 
-Without the shim, installs avoid the race by ordering
-instead of padding, the procedure the reference install
-used. Stage 1 (tmpfs): files on tmpfs never acquire the
-markers, so this stage proves the toolchain where the race
-cannot occur: `sh ~/workspace/nix/setup-nix.sh
-/var/tmp/nixroot`, then `/home/hatch/bin/nix-env -iA
-nixpkgs.hello` (nixwrap mounts /var/tmp/nixroot whenever
-the disk store does not exist yet). Stage 2 (disk; run it
-in a fresh session): `sh ~/workspace/nix/setup-nix.sh`,
-then `nix-env -iA nixpkgs.hello`, then `nix-env -iA
-nixpkgs.tailscale`. The small closures land first, so the
-large closure is never attempted against a cold store: on
-the reference store, Nix + hello + attr registered 855
-paths in the first minutes, and the tailscale install an
-hour later added 58. The .drv files created before any
-failure persist, so re-running a command resumes from them.
+Without the shim, installs must face the race in §10
+directly. Stage 1 (tmpfs): files on tmpfs never acquire
+the markers, so this stage proves the toolchain and the
+package where the race cannot occur: `sh
+~/workspace/nix/setup-nix.sh /var/tmp/nixroot`, then
+`/home/hatch/bin/nix-env -iA nixpkgs.tailscale` (nixwrap
+mounts /var/tmp/nixroot whenever the disk store does not
+exist yet). Stage 2 (disk; run it in a fresh session):
+`sh ~/workspace/nix/setup-nix.sh`, then `nix-env -iA
+nixpkgs.tailscale`. The disk install is a cold install
+against a fresh store, the hardest case for the race; the
+.drv files created before any failure persist, so
+re-running the command resumes from them rather than
+starting over.
 
 ### The wrapper: `/home/hatch/bin/nixwrap`
 Symlinks in `/home/hatch/bin/` (`nix`, `nix-env`, `nix-shell`, `nix-build`,
@@ -424,8 +422,9 @@ first ~150 paths): with the shim, the hello closure
 instantiated fully (765 paths), a repeat unshimmed run
 failed again, and tailscale's full closure instantiated
 cold in a single pass (2,474 paths). If the shim is ever
-unavailable or broken, §4's fallback procedure avoids the
-race by staging and ordering instead.
+unavailable or broken, §4's fallback procedure stages the
+install on tmpfs first and relies on .drv persistence to
+resume the disk install across retries.
 
 ## 11. Optional module: API Bridge (OpenAI-compatible endpoint)
 
