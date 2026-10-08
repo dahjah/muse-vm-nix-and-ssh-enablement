@@ -41,11 +41,20 @@ fi
 
 BACKING=${1:-/home/hatch/nixdisk}
 mkdir -p "$BACKING" /nix /etc/nix
-cat > /etc/nix/nix.conf <<'CONF'
+# The ignored-acls list is single-sourced in ignored-acls.txt,
+# beside this script (INSTALL.md sections 4 and 10); fall back
+# to the built-in list if that file is unavailable.
+ACL_FILE="$(dirname "$0")/ignored-acls.txt"
+if [ -f "$ACL_FILE" ]; then
+  ACL_VALUE=$(grep -v -e '^#' -e '^$' "$ACL_FILE" | tr '\n' ' ' | sed 's/  */ /g; s/ $//')
+else
+  ACL_VALUE='security.csm security.selinux system.nfs4_acl security.tamper_marker user.hatch_tainted user.hatch_tainted.n user.hatch_tainted.u'
+fi
+cat > /etc/nix/nix.conf <<CONF
 sandbox = false
 build-users-group =
 experimental-features = nix-command flakes
-ignored-acls = security.csm security.selinux system.nfs4_acl security.tamper_marker user.hatch_tainted user.hatch_tainted.n user.hatch_tainted.u
+ignored-acls = $ACL_VALUE
 CONF
 mountpoint -q /nix || mount --bind "$BACKING" /nix
 

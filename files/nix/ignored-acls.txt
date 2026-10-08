@@ -1,0 +1,16 @@
+# ignored-acls for /etc/nix/nix.conf: the single source for the
+# attribute list Nix must leave alone on store files. One name
+# per line. nixwrap and setup-nix.sh generate the config line
+# from this file (installed at
+# /home/hatch/workspace/nix/ignored-acls.txt). The first four
+# names are the platform defaults worth keeping; the
+# user.hatch_tainted* names are this host's taint markers
+# (INSTALL.md sections 4 and 10). If a new marker suffix ever
+# appears in an error, append its full attribute name here.
+security.csm
+security.selinux
+system.nfs4_acl
+security.tamper_marker
+user.hatch_tainted
+user.hatch_tainted.n
+user.hatch_tainted.u

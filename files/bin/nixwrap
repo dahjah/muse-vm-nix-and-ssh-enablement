@@ -19,11 +19,20 @@ fi
 # and the sandboxed root builder cannot write the store (sandbox = false).
 if [ ! -f /etc/nix/nix.conf ]; then
   mkdir -p /etc/nix 2>/dev/null
-  cat > /etc/nix/nix.conf 2>/dev/null <<'EOF'
+  # The ignored-acls list is single-sourced in ignored-acls.txt
+  # (INSTALL.md sections 4 and 10); fall back to the built-in
+  # list if that file is unavailable.
+  ACL_FILE=/home/hatch/workspace/nix/ignored-acls.txt
+  if [ -f "$ACL_FILE" ]; then
+    ACL_VALUE=$(grep -v -e '^#' -e '^$' "$ACL_FILE" | tr '\n' ' ' | sed 's/  */ /g; s/ $//')
+  else
+    ACL_VALUE='security.csm security.selinux system.nfs4_acl security.tamper_marker user.hatch_tainted user.hatch_tainted.n user.hatch_tainted.u'
+  fi
+  cat > /etc/nix/nix.conf 2>/dev/null <<EOF
 sandbox = false
 build-users-group =
 experimental-features = nix-command flakes
-ignored-acls = security.csm security.selinux system.nfs4_acl security.tamper_marker user.hatch_tainted user.hatch_tainted.n user.hatch_tainted.u
+ignored-acls = $ACL_VALUE
 EOF
 fi
 # The profile symlink lives in /root (ephemeral overlay) while the profile
@@ -46,6 +55,8 @@ fi
 if [ -f /home/hatch/.config/vm-api-bridge/autostart ]; then
   /home/hatch/scripts/bootstrap-api-bridge.sh >/dev/null 2>&1 || true
 fi
+# BEGIN local-only
+# END local-only
 export PATH="/root/.nix-profile/bin:$PATH"
 
 # xattr-retry shim: pads extended-attribute list size probes so

@@ -83,6 +83,9 @@ so the node remains registered across reboots without re-login.
 | `files/bin/nixwrap` | Wrapper invoked by every `nix`/`tailscale` command |
 | `files/bin/xattr-retry.c` | Source of the xattr-retry preload shim (CI publishes the built .so as a release asset) |
 | `files/nix/setup-nix.sh` | Full Nix install/reinstall script |
+| `files/nix/ignored-acls.txt` | Single source for the `ignored-acls` list in nix.conf |
+| `files/scripts/install-files.sh` | Phase B installer (records the install manifest; `--check` reports drift) |
+| `files/scripts/doctor.sh` | Layer-by-layer health check (§9) |
 | `files/hooks/nix-boot-trigger.sh` | Boot recovery poll script |
 | `files/hooks/nix-boot-trigger.json` | Hook registration parameters |
 | `files/scripts/bootstrap-tailscale.sh` | Idempotent `tailscaled` starter |

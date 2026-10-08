@@ -23,25 +23,37 @@ only), skip to the §9 checklist instead.
    Tailscale start (the DERP sweep, §7). There is no auto-approve; warn
    them it's coming, once, instead of apologizing per prompt.
 
-**Phase B: lay down the files (skip any that already exist):**
-Copy from this repo's `files/` tree to the target paths, and `chmod +x`
-each script:
+**Phase B: lay down the files:** run
+`sh files/scripts/install-files.sh` from the repo root (add
+`--with-bridge` if the §11 module is wanted). The script
+copies the files in the table below to their targets with
+the right modes, creates the directories, the symlink farm
+(`nix`, `nix-env`, `tailscale`, and the other tool names in
+`/home/hatch/bin`, all pointing at `nixwrap`), and the
+tailscale autostart flag, and it records a manifest of what
+it installed (`/home/hatch/.config/vm-setup/manifest`). It
+is idempotent. The installed copy at
+`/home/hatch/scripts/install-files.sh --check` later reports
+any drift from that manifest without writing anything. One
+special case: a block between `# BEGIN local-only` and
+`# END local-only` in the installed nixwrap is machine-local
+(the repo ships it empty) and is preserved across refreshes.
 
 | Repo file | Target |
 |---|---|
 | `files/bin/nixwrap` | `/home/hatch/bin/nixwrap` |
 | `files/scripts/bootstrap-tailscale.sh` | `/home/hatch/scripts/bootstrap-tailscale.sh` |
+| `files/scripts/install-files.sh` | `/home/hatch/scripts/install-files.sh` |
+| `files/scripts/doctor.sh` | `/home/hatch/scripts/doctor.sh` |
 | `files/hooks/nix-boot-trigger.sh` | `/home/hatch/hooks/scripts/nix-boot-trigger.sh` |
 | `files/nix/setup-nix.sh` | `/home/hatch/workspace/nix/setup-nix.sh` |
+| `files/nix/ignored-acls.txt` | `/home/hatch/workspace/nix/ignored-acls.txt` |
 | `files/bin/xattr-retry.c` | `/home/hatch/workspace/nix/xattr-retry.c` |
 
-- Create directories: `~/bin`, `~/scripts`, `~/.config/vm-tailscale`,
-  `~/.local/state/tailscale`.
-- Symlink farm: `for t in nix nix-env nix-shell nix-build nix-store
-  nix-channel nix-instantiate nix-collect-garbage nix-hash
-  nix-copy-closure nixsh tailscale tailscaled; do ln -sf nixwrap
-  /home/hatch/bin/$t; done`
-- Flag: `touch ~/.config/vm-tailscale/autostart`
+With `--with-bridge`, the script also installs
+`files/scripts/bootstrap-api-bridge.sh` and
+`files/hooks/api-bridge.sh` and creates the bridge autostart
+flag.
 
 **Phase C: Nix:** run `sh ~/workspace/nix/setup-nix.sh`
 (repo: `files/nix/setup-nix.sh`; the script ensures the
@@ -52,8 +64,7 @@ nixwrap, §4), then the bare installs of §4:
 `/home/hatch/bin/nix-env -iA nixpkgs.tailscale`. Done when `nix --version` prints 2.35.2
 and both installs exit 0. If an install ever fails naming a
 `user.hatch_tainted.<new-suffix>` attribute, append that
-suffix to `ignored-acls` in §4's config (all three places
-it lives) and retry. If the shim is unavailable or
+suffix to the `ignored-acls` list (§4) and retry. If the shim is unavailable or
 misbehaves, §4's fallback procedure is the manual path.
 
 **Phase D: boot hook:** register `nix-boot-trigger` exactly as in §6,
@@ -99,7 +110,7 @@ Files on the regular filesystems acquire immutable extended attributes in the
 `user.hatch_tainted*` family (variants observed: bare `user.hatch_tainted`,
 `.n`, `.u`, **the suffix set differs between boots**, so the config lists all
 observed variants; if a future install fails naming a new variant, append it
-in all three places listed below). Stock Nix aborts registering store paths:
+to the one list described below). Stock Nix aborts registering store paths:
 `removing extended attribute 'user.hatch_tainted...' ... Operation not permitted`.
 The attributes cannot be removed from inside (setfattr → EPERM), including via
 the real `attr` tools. tmpfs (`/tmp`, `/var/tmp`) is exempt but non-persistent.
@@ -114,6 +125,14 @@ ignored-acls = security.csm security.selinux system.nfs4_acl security.tamper_mar
 ```
 (`sandbox = false` + empty build-users-group because the root sandboxed
 builder cannot write the store here.)
+
+The `ignored-acls` line is generated, not hand-maintained:
+`files/nix/ignored-acls.txt` (one attribute name per line,
+installed at `/home/hatch/workspace/nix/ignored-acls.txt`) is
+the single source, and both setup-nix.sh and nixwrap build
+the line from it, each falling back to a built-in copy if the
+file is missing. Changing the list means editing that one
+file.
 
 ### Layout
 - Nix **2.35.2**, official installer, single-user. Channel: nixpkgs-unstable.
@@ -346,42 +365,46 @@ expect the same *shape*, not the same values):
   `[]` (no DERP or ACL warnings).
 - Platform Tailscale shim: unused, not connected.
 
+This state is asserted mechanically by
+`/home/hatch/scripts/doctor.sh` (§9); a fresh setup is done
+when the doctor exits 0.
+
 ## 9. Rebuild checklist (fresh VM or full loss of state)
 
-Home (`/home/hatch`) and all scripts survive VM replacement, so a rebuild
-is mostly re-running and verifying, in this order:
+Home (`/home/hatch`) and all scripts survive VM replacement,
+so a rebuild is mostly re-running and verifying. Start with
+the doctor: `/home/hatch/scripts/doctor.sh` checks each layer
+(layout against the install manifest, shim, nix, profile,
+tailscale, and the bridge if enabled) and names the failing
+one. `--fix` performs the mechanical repairs (it triggers
+the wrappers' self-healing and reinstalls a missing tailscale
+package) and then re-checks.
 
-1. Settings > Permissions > Direct network protocols: enable the
-   required protocols (§2; user only, the agent cannot).
-2. Run any wrapper once, `/home/hatch/bin/nix --version`, and let nixwrap
-   self-heal (mount point, nix.conf, profile link). If the store itself is
-   gone, run `~/workspace/nix/setup-nix.sh` first. The
-   xattr-retry shim needs no check: nixwrap refetches it
-   automatically if it is missing (§4).
-3. `/home/hatch/bin/nix-env -iA nixpkgs.tailscale` if the
-   profile lacks it.
-4. Confirm the hook `nix-boot-trigger` exists and is enabled (definitions
-   are runtime-saved; recreate from §6 + `files/hooks/` if missing).
-5. tailscaled autostarts via its flag (§7); if the node shows
-   NeedsLogin, run the §7 command block and approve the login URL.
-6. If the ACL policy was applied, it lives in the user's Tailscale
-   account (server-side), so it survives; verify `tailscale status`
-   Health is `[]`.
-7. If the node itself was ever deleted from the tailnet, redo
-   `tailscale up --ssh --hostname=muse-vm` (adding
-   `--advertise-tags=tag:muse` if the ACL policy is in use) and
-   approve the login URL in a browser.
-8. If the API Bridge module (§11) is enabled, confirm its flag
-   exists and the server answers `curl 127.0.0.1:8080/health` after
-   the first nix call of the boot.
+What the doctor cannot fix, in the order it will matter:
+
+1. Settings > Permissions > Direct network protocols: enable
+   the required protocols (§2; user only, the agent cannot).
+2. Store gone entirely (the doctor's nix layer fails and
+   `--fix` cannot help): run `~/workspace/nix/setup-nix.sh`,
+   then `/home/hatch/bin/nix-env -iA nixpkgs.tailscale`.
+3. Hook `nix-boot-trigger` missing (hook definitions are
+   runtime-saved state): recreate it from §6 + `files/hooks/`.
+4. Node shows NeedsLogin: run the §7 command block and
+   approve the login URL. If the node itself was deleted from
+   the tailnet, redo `tailscale up --ssh --hostname=muse-vm`
+   (adding `--advertise-tags=tag:muse` if the ACL policy is
+   in use) and approve the login URL in a browser.
+5. The ACL policy, if applied, lives in the user's Tailscale
+   account (server-side) and survives; the doctor's tailscale
+   layer confirms Health is `[]`.
 
 ## 10. Known quirks: taint markers
 
 The suffix variants in `ignored-acls` may gain new forms on future
 boots (two variants have been seen: `.n` and `.u`). If an
 install ever fails naming a `user.hatch_tainted.<new-suffix>`
-attribute, append that exact suffix to `ignored-acls` in all three
-places it lives (§4) and retry.
+attribute, append that exact attribute name as a line in
+`ignored-acls.txt` (§4) and retry.
 
 A second, distinct failure from the same markers: an install
 fails with `error: querying extended attributes of
@@ -430,9 +453,9 @@ Enablement, in order:
 
 1. Install the package: `nix-env -f files/api-bridge/api-bridge.nix -i`
    (adjust the path to the repo checkout).
-2. Copy `files/scripts/bootstrap-api-bridge.sh` to
-   `/home/hatch/scripts/` and `files/hooks/api-bridge.sh` to
-   `/home/hatch/hooks/scripts/`; `chmod +x` both.
+2. Run `sh files/scripts/install-files.sh --with-bridge`
+   from the repo root: it installs the module's two scripts
+   and creates its autostart flag.
 3. Create a dedicated side chat for bridge traffic (title it
    "API Bridge") and note its chat id.
 4. Register the hook: id `api-bridge`, script
@@ -440,7 +463,7 @@ Enablement, in order:
    delivery `{surface: "side_chat", to: "<the chat id from step 3>}`,
    and the prompt below. Dry-run it (empty queue: silent), then
    enable it.
-5. `touch /home/hatch/.config/vm-api-bridge/autostart`, then run any
+5. Run any
    nix command once to start the server through the bootstrap.
 6. Verify: `curl 127.0.0.1:8080/health` returns `{"status": "ok"}`,
    and an authorized `POST /v1/chat/completions` (header
