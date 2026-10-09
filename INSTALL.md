@@ -450,8 +450,11 @@ Components (all in this repo):
   first run it also generates the initial API key and seeds
   the keyring described under "API keys" below; all of it is
   runtime state and never enters the Nix store), keeps the
-  `~/bridge/bin/` symlinks pointed at the packaged tools, and
-  starts the server if it is not running.
+  `~/bridge/bin/` symlinks pointed at the tool copies in
+  `~/bridge/src/` (the Nix profile paths resolve into `/nix`,
+  which is not mounted in every shell the agent runs in, so the
+  packaged tools kept appearing as dangling symlinks to the
+  worker), and starts the server if it is not running.
 - `files/hooks/api-bridge.sh`: the poll script for the `api-bridge`
   hook, which claims queued jobs and wakes the bridge's side chat.
 
@@ -524,7 +527,7 @@ instruction set for every bridge turn):
 > 3. If the request has a "tools" list and "session_available" is true, you are directing the client's own harness in a live session. The listed tools execute on the client, never on this VM; do not use your own tools on the job's content. Loop:
 >    a. Decide the next action from the current conversation, following any system message in it. To have the client run tools, send ONLY this JSON as the reply text, through /home/hatch/bridge/bin/bridge-reply <job_id> (reply on stdin): {"reasoning": "<your plan for this step>", "tool_calls": [{"name": "<a listed tool name>", "arguments": { ... }}]}
 >       In "reasoning", state your plan in one to three plain sentences: what these calls are for and what you expect to learn. The client shows it as your thinking for this step, so write it for the user and keep it brief. Several calls may be listed in one envelope. If bridge-reply rejects the envelope as malformed, fix the JSON and send it again.
->    b. After sending an envelope, run /home/hatch/bridge/bin/bridge-next <job_id>. If it prints a request, treat that request's messages as the current conversation and go back to (a). If it reports no request yet, run it again, up to 2 times. If it reports the session is over, stop. After 2 empty tries, run /home/hatch/bridge/bin/bridge-close <job_id> and stop.
+>    b. After sending an envelope, run /home/hatch/bridge/bin/bridge-next <job_id>. If it prints a request, treat that request's messages as the current conversation and go back to (a). If it reports no request yet, run it again, up to 6 times. If it reports the session is over, stop. After 6 empty tries, run /home/hatch/bridge/bin/bridge-close <job_id> and stop.
 >    c. When no more tool calls are needed, send the final answer as plain text (not JSON) through bridge-reply. That ends the session.
 > 4. Handle exactly one job per wake. If the job file no longer exists, do nothing.
 > 5. After a successful respond or final reply, end your turn with a one-line note naming the job id you served.

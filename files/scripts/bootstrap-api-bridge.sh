@@ -11,12 +11,23 @@ mkdir -p "$STATE" "$BRIDGE_HOME/inbox" "$BRIDGE_HOME/outbox" "$BRIDGE_HOME/bin"
 LOG="$STATE/bootstrap.log"
 ts() { date -Iseconds; }
 
-# The agent calls the bridge tools by their ~/bridge/bin paths; keep
-# those symlinks pointed at the packaged tools (a package upgrade
-# that adds a tool then needs no manual step).
-for tool in bridge-respond bridge-key bridge-reply bridge-next bridge-close; do
-  if [ -e "/root/.nix-profile/bin/$tool" ]; then
-    ln -sf "/root/.nix-profile/bin/$tool" "$BRIDGE_HOME/bin/$tool"
+# The agent calls the bridge tools by their ~/bridge/bin paths.
+# Point those symlinks at the copies in ~/bridge/src, not the nix
+# profile: the profile paths resolve into /nix, which is not
+# mounted in every shell the agent runs in, so the packaged tools
+# kept appearing as dangling symlinks to the worker. The src
+# copies are the same files (install-files.sh keeps them in sync
+# with the repo). bridge-reply, bridge-next, and bridge-close are
+# one script (bridge-session) dispatched on the name it is
+# called by.
+for tool in bridge-respond bridge-key; do
+  if [ -e "$BRIDGE_HOME/src/$tool" ]; then
+    ln -sf "$BRIDGE_HOME/src/$tool" "$BRIDGE_HOME/bin/$tool"
+  fi
+done
+for tool in bridge-reply bridge-next bridge-close; do
+  if [ -e "$BRIDGE_HOME/src/bridge-session" ]; then
+    ln -sf "$BRIDGE_HOME/src/bridge-session" "$BRIDGE_HOME/bin/$tool"
   fi
 done
 
