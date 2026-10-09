@@ -473,6 +473,20 @@ does not continue the live session (the worker's turn ended, or
 the history does not match), is served as a normal one-shot job,
 so no exchange can get stuck waiting on a session.
 
+A tool step's envelope may also carry a `reasoning` field: a
+short plan statement (one to three sentences) the worker writes
+for that step, saying what the calls are for and what it expects
+to learn. The server passes it to the client as the message's
+`reasoning_content` (and, for a streamed response, as a
+reasoning delta ahead of the tool-call delta), which clients
+that support the field render as a thinking block. It is the
+worker's stated rationale for the step, written as part of its
+reply; the bridge has no access to the model's internal
+reasoning, and nothing here is that. Plain chat and final
+answers carry no reasoning block, and the continuation matcher
+ignores reasoning fields entirely, since clients differ on
+whether they echo them back.
+
 Enablement, in order:
 
 1. Install the package: `nix-env -f files/api-bridge/api-bridge.nix -i`
@@ -508,9 +522,9 @@ instruction set for every bridge turn):
 >       Text you write in this chat is NOT delivered to the requester; the respond command is the response. Do not consider the request answered until you have made that call.
 >    c. If bridge-respond reports the job is no longer pending, the requester has already timed out: stop, with no further action.
 > 3. If the request has a "tools" list and "session_available" is true, you are directing the client's own harness in a live session. The listed tools execute on the client, never on this VM; do not use your own tools on the job's content. Loop:
->    a. Decide the next action from the current conversation, following any system message in it. To have the client run tools, send ONLY this JSON as the reply text, through /home/hatch/bridge/bin/bridge-reply <job_id> (reply on stdin): {"tool_calls": [{"name": "<a listed tool name>", "arguments": { ... }}]}
->       Several calls may be listed in one envelope. If bridge-reply rejects the envelope as malformed, fix the JSON and send it again.
->    b. After sending an envelope, run /home/hatch/bridge/bin/bridge-next <job_id>. If it prints a request, treat that request's messages as the current conversation and go back to (a). If it reports no request yet, run it again, up to 6 times. If it reports the session is over, stop. After 6 empty tries, run /home/hatch/bridge/bin/bridge-close <job_id> and stop.
+>    a. Decide the next action from the current conversation, following any system message in it. To have the client run tools, send ONLY this JSON as the reply text, through /home/hatch/bridge/bin/bridge-reply <job_id> (reply on stdin): {"reasoning": "<your plan for this step>", "tool_calls": [{"name": "<a listed tool name>", "arguments": { ... }}]}
+>       In "reasoning", state your plan in one to three plain sentences: what these calls are for and what you expect to learn. The client shows it as your thinking for this step, so write it for the user and keep it brief. Several calls may be listed in one envelope. If bridge-reply rejects the envelope as malformed, fix the JSON and send it again.
+>    b. After sending an envelope, run /home/hatch/bridge/bin/bridge-next <job_id>. If it prints a request, treat that request's messages as the current conversation and go back to (a). If it reports no request yet, run it again, up to 2 times. If it reports the session is over, stop. After 2 empty tries, run /home/hatch/bridge/bin/bridge-close <job_id> and stop.
 >    c. When no more tool calls are needed, send the final answer as plain text (not JSON) through bridge-reply. That ends the session.
 > 4. Handle exactly one job per wake. If the job file no longer exists, do nothing.
 > 5. After a successful respond or final reply, end your turn with a one-line note naming the job id you served.

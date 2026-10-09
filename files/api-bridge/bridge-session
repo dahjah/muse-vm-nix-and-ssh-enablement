@@ -77,6 +77,8 @@ def valid_envelope(payload):
     calls = obj.get("tool_calls")
     if not isinstance(calls, list) or not calls:
         return False
+    if "reasoning" in obj and not isinstance(obj.get("reasoning"), str):
+        return False
     for c in calls:
         if not isinstance(c, dict):
             return False

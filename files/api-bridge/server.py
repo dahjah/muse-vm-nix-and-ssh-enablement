@@ -184,12 +184,18 @@ def _norm_msg(m):
     those tolerances: content null/missing counts as empty, and
     arguments are compared as parsed JSON values. Everything
     else (roles, tool call ids, names, and the arguments' actual
-    content) must match exactly."""
+    content) must match exactly. Reasoning fields are ignored
+    entirely: they are display metadata, not message identity."""
     if not isinstance(m, dict):
         return m
     m = dict(m)
     if m.get("content") is None:
         m["content"] = ""
+    # Reasoning is display metadata, not message identity: whether
+    # a client echoes it back, and under which field name, varies,
+    # so it plays no part in deciding a continuation.
+    m.pop("reasoning_content", None)
+    m.pop("reasoning", None)
     tcs = m.get("tool_calls")
     if isinstance(tcs, list):
         new_tcs = []
@@ -240,39 +246,47 @@ def _continues(sess, messages):
 def parse_envelope(payload):
     """Parse an agent reply as a tool_calls envelope.
 
-    Returns a list of {"name": str, "arguments": dict-or-str} when the
-    payload is exactly such an envelope, else None (plain text)."""
+    Returns (calls, reasoning): calls is a list of
+    {"name": str, "arguments": dict-or-str} when the payload is
+    exactly such an envelope, else None (plain text). reasoning is
+    the envelope's optional "reasoning" field: a short plan
+    statement the agent may attach to a tool step, surfaced to the
+    client as reasoning_content. A reasoning value that is not a
+    string is dropped; it never invalidates the tool calls."""
     text = payload.strip()
     if not text.startswith("{"):
-        return None
+        return None, None
     try:
         obj = json.loads(text)
     except ValueError:
-        return None
+        return None, None
     if not isinstance(obj, dict):
-        return None
+        return None, None
     calls = obj.get("tool_calls")
     if not isinstance(calls, list) or not calls:
-        return None
+        return None, None
     out = []
     for call in calls:
         if not isinstance(call, dict):
-            return None
+            return None, None
         name = call.get("name")
         args = call.get("arguments")
         if not isinstance(name, str) or not name:
-            return None
+            return None, None
         if not isinstance(args, (dict, str)):
-            return None
+            return None, None
         out.append({"name": name, "arguments": args})
-    return out
+    reasoning = obj.get("reasoning")
+    if not isinstance(reasoning, str) or not reasoning.strip():
+        reasoning = None
+    return out, reasoning
 
 
 def build_reply(req, payload):
-    """Translate a raw agent payload into (message, finish_reason,
-    assistant_msg), where assistant_msg is the exact message dict the
-    client is expected to echo back in a continuing request."""
-    calls = parse_envelope(payload)
+    """Translate a raw agent payload into (message, finish_reason).
+    The message is also what the session matcher stores as the
+    last assistant message a continuing request must echo."""
+    calls, reasoning = parse_envelope(payload)
     model = req.get("model") or "muse"
     if calls is None:
         msg = {"role": "assistant", "content": payload}
@@ -288,6 +302,8 @@ def build_reply(req, payload):
             "function": {"name": call["name"], "arguments": args},
         })
     msg = {"role": "assistant", "content": None, "tool_calls": tool_calls}
+    if reasoning:
+        msg["reasoning_content"] = reasoning
     return msg, "tool_calls"
 
 
@@ -308,27 +324,38 @@ def completion_obj(job_id, req, msg, finish):
 
 def stream_body(job_id, req, msg, finish, payload):
     model = req.get("model") or "muse"
+    deltas = []
+    reasoning = msg.get("reasoning_content")
+    if reasoning:
+        deltas.append({"role": "assistant",
+                       "reasoning_content": reasoning})
     if finish == "tool_calls":
-        delta = {"role": "assistant", "tool_calls": [
+        deltas.append({"role": "assistant", "tool_calls": [
             {"index": i, "id": tc["id"], "type": "function",
              "function": tc["function"]}
-            for i, tc in enumerate(msg["tool_calls"])]}
+            for i, tc in enumerate(msg["tool_calls"])]})
     else:
-        delta = {"role": "assistant", "content": payload}
-    chunk = {
-        "id": "chatcmpl-" + job_id,
-        "object": "chat.completion.chunk",
-        "created": int(time.time()), "model": model,
-        "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
-    }
+        deltas.append({"role": "assistant", "content": payload})
+
+    def chunk(delta):
+        return {
+            "id": "chatcmpl-" + job_id,
+            "object": "chat.completion.chunk",
+            "created": int(time.time()), "model": model,
+            "choices": [{"index": 0, "delta": delta,
+                         "finish_reason": None}],
+        }
+
     final = {
         "id": "chatcmpl-" + job_id,
         "object": "chat.completion.chunk",
         "created": int(time.time()), "model": model,
         "choices": [{"index": 0, "delta": {}, "finish_reason": finish}],
     }
-    return ("data: %s\n\ndata: %s\n\ndata: [DONE]\n\n"
-            % (json.dumps(chunk), json.dumps(final))).encode()
+    parts = ["data: %s\n\n" % json.dumps(chunk(d)) for d in deltas]
+    parts.append("data: %s\n\n" % json.dumps(final))
+    parts.append("data: [DONE]\n\n")
+    return "".join(parts).encode()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -609,7 +636,7 @@ class Handler(BaseHTTPRequestHandler):
                 print("session %s live key=%s"
                       % (sess.sid[:8], sess.key_name), flush=True)
             sess.cond.notify_all()
-        live = parse_envelope(payload) is not None
+        live = parse_envelope(payload)[0] is not None
         self._send_json(200, {"status": "delivered",
                               "session": "live" if live else "closed"})
 
