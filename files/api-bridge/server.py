@@ -175,16 +175,38 @@ def _live_session():
 
 
 def _norm_msg(m):
-    """A message normalized the way a client may echo it back: some
-    clients (opencode does) turn a null content into an empty
-    string, or drop the field. Compare with that tolerance;
-    everything else (roles, tool call ids, names, arguments) must
-    match exactly."""
+    """A message normalized the way a client may echo it back.
+    Two known client normalizations (both seen from opencode):
+    a null content comes back as an empty string (or the field
+    is dropped), and tool-call arguments, which the server emits
+    as a JSON string with Python's spacing, come back
+    re-serialized in the client's own formatting. Compare with
+    those tolerances: content null/missing counts as empty, and
+    arguments are compared as parsed JSON values. Everything
+    else (roles, tool call ids, names, and the arguments' actual
+    content) must match exactly."""
     if not isinstance(m, dict):
         return m
     m = dict(m)
     if m.get("content") is None:
         m["content"] = ""
+    tcs = m.get("tool_calls")
+    if isinstance(tcs, list):
+        new_tcs = []
+        for tc in tcs:
+            if isinstance(tc, dict):
+                tc = dict(tc)
+                fn = tc.get("function")
+                if isinstance(fn, dict) \
+                        and isinstance(fn.get("arguments"), str):
+                    fn = dict(fn)
+                    try:
+                        fn["arguments"] = json.loads(fn["arguments"])
+                    except ValueError:
+                        pass
+                    tc["function"] = fn
+            new_tcs.append(tc)
+        m["tool_calls"] = new_tcs
     return m
 
 
