@@ -13,7 +13,7 @@ let
 in
 pkgs.stdenv.mkDerivation {
   pname = "muse-api-bridge";
-  version = "0.3.0";
+  version = "0.3.1";
   src = ./.;
 
   nativeBuildInputs = [ pkgs.makeWrapper ];

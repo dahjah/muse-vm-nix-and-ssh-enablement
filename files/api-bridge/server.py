@@ -454,6 +454,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Content-Length", str(len(body)))
+            # A streamed completion is terminal: close the
+            # connection with the body. Some clients keep their
+            # busy state until the socket closes, even with a
+            # length-delimited body and the [DONE] marker sent.
+            self.send_header("Connection", "close")
+            self.close_connection = True
             self.end_headers()
             self.wfile.write(body)
         else:
